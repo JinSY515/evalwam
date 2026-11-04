@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+results/
+*.npy
+*.npz
+*.mp4
+*.safetensors
