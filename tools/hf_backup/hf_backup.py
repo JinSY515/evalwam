@@ -16,6 +16,9 @@ R = "/root/project/egowam/results_syn"
 H = f"{R}/goalprog_mode_real6_nomr_hg0_grad0.5"
 AB = f"{R}/abl"
 CK = "/root/ckpt/wam"
+LO = "/root/data/eval_bench/lookout_val_cv"
+LOOKOUT_DATA = sorted(os.path.join(r, d) for r, ds, _ in os.walk(LO) for d in ds if d.startswith("depth_da3")) \
+    + ["/root/project/carla/results/lookout_val_cv_lh"]
 
 # (path in repo, [source dirs], what) ; order = small / important first
 SHARDS = [
@@ -44,11 +47,27 @@ SHARDS = [
     ("abl/RB_raytoken.tar", [f"{AB}/RB_raytoken"], "ray token ck 1000/1500"),
     ("abl/III_goalaux.tar", [f"{AB}/III_goalaux"], "ladder III goal aux (valbench)"),
     ("abl/IV_depthpred.tar", [f"{AB}/IV_depthpred"], "ladder IV depth pred (valbench)"),
+    ("supp/camcond_goalstyle.tar", [f"{H}/ckpta7500_8750_camcond_goalstyle"], "mode 0 + edited goal (GT camera input, edited goal appearance)"),
+    ("supp/cherry_export_3f.tar", [f"{H}/cherry_export_3f"], "cherry-pick export (3-frame strips, 11-13)"),
+    ("supp/viewer_cache_cherry.tar", ["/root/project/evalwam/tools/ckpt_viewer/cache/cherry"], "/cherry page cache: rankings (dyn_*.json), grids, routes, chosen route style (route_style.txt); slow to recompute with cherry_compute.py"),
+    ("data/lookout_da3_lh.tar", LOOKOUT_DATA, "LookOut DA3 pseudo-GT depth (depth_da3*, not in HF eval_bench) + left-right corrected GT poses (lookout_val_cv_lh)"),
+]
+# files added / changed after the shard above was made: (path in repo, source dir, since) ; extract over the base tar
+DELTAS = [
+    ("delta/gtcam_cmp_after1341.tar", f"{R}/gtcam_cmp", "2026-11-22 13:41"),
+    ("delta/vcons_direct_vs_residual_after1341.tar", f"{R}/goalprog_mode_real6_nomr_hg0_grad0.5_direct", "2026-11-22 13:41"),
+    ("delta/main_ckpta7500_8750_after1342.tar", f"{H}/ckpta7500_8750", "2026-11-22 13:42"),   # RECON (x4), rc4 recon_fig / recon_cherry*, dl3dv
+    ("delta/goalstyle_after1343.tar", f"{H}/ckpta7500_8750_goalstyle", "2026-11-22 13:43"),
 ]
 CKPTS = [  # (path in repo, local file)
     *[(f"main/checkpoint-a7500_8750/{f}", f"{CK}/avg_eval/checkpoint-a7500_8750/{f}") for f in ("global_step.txt", "model.safetensors")],
     ("main/avg.py", f"{CK}/avg_eval/avg.py"),
+    *[(f"avg/checkpoint-a4000_7500/{f}", f"{CK}/avg_eval/checkpoint-a4000_7500/{f}") for f in ("global_step.txt", "model.safetensors")],
     *[(f"direct/checkpoint-2000/{f}", f"{CK}/goalprog_mode_real6_nomr_hg0_grad0.5_direct/checkpoint-2000/{f}")
+      for f in ("global_step.txt", "scheduler.bin", "random_states_0.pkl", "model.safetensors", "optimizer.bin")],
+    *[(f"abl2/checkpoint-3000/{f}", f"{CK}/goalprog_appearance_nogoalaux/checkpoint-3000/{f}")
+      for f in ("global_step.txt", "scheduler.bin", "random_states_0.pkl", "model.safetensors")],
+    *[(f"abl4/checkpoint-1000/{f}", f"{CK}/goalprog_dl3dv_camfix_d10_dpt_cont5k/checkpoint-1000/{f}")
       for f in ("global_step.txt", "scheduler.bin", "random_states_0.pkl", "model.safetensors", "optimizer.bin")],
 ]
 METRIC_EXT = (".json", ".csv", ".md", ".log", ".out", ".txt", ".xlsx", ".sh", ".py")
@@ -118,6 +137,17 @@ def main():
         out = f"{STAGE}/{rp.replace('/', '__')}"
         t = time.time(); tar(out, srcs); log(f"tar {rp} {os.path.getsize(out) / 1e9:.3f} GB in {(time.time() - t) / 60:.1f} min")
         up(out, rp, DATA, "dataset"); os.remove(out)
+    # 3b. deltas (only files newer than `since`)
+    for rp, src, since in DELTAS:
+        manifest.append((rp, [src], f"files changed after {since} (extract after the base tar)"))
+        if api.file_exists(DATA, rp, repo_type="dataset"):
+            log("skip (in repo)", rp); continue
+        lst = f"{STAGE}/delta.list"
+        r = subprocess.run(["find", src, "(", "-type", "f", "-o", "-type", "l", ")", "-newermt", since], capture_output=True, text=True)
+        open(lst, "w").write("".join(x.lstrip("/") + "\n" for x in r.stdout.splitlines()))
+        out = f"{STAGE}/{rp.replace('/', '__')}"
+        tar(out, None, lst); log(f"tar {rp} {os.path.getsize(out) / 1e9:.3f} GB ({len(r.stdout.splitlines())} files)")
+        up(out, rp, DATA, "dataset"); os.remove(out)
     # 4. READMEs
     rows = "\n".join(f"| `{rp}` | {what} | {'<br>'.join(f'`{s}`' for s in srcs)} |" for rp, srcs, what in manifest)
     readme = f"""# egowam results backup (private)
@@ -152,8 +182,14 @@ To restore somewhere else, extract with `-C <dir>`; symlinks then point to `/roo
 - `main/checkpoint-a7500_8750/model.safetensors` = MAIN model: uniform weight average of checkpoint-7500 and
   checkpoint-8750 of run `goalprog_mode_real6_nomr_hg0_grad0.5` (`main/avg.py`). Load with the same inference flags as the eval launchers
   (egowam `launchers/goalprog_mode_real6_nomr_hg0_grad0.5_multi/`).
+- `avg/checkpoint-a4000_7500/` = uniform average of checkpoint-4000 and checkpoint-7500 of the same run (earlier main
+  candidate; used by `vcons_resid_viz`, `cherry_export_cka4000_7500`).
 - `direct/checkpoint-2000/` = ablation: L_vcons direct matching (`--vcons_mode direct`), step 2000, with optimizer /
   scheduler / RNG state for resuming (`RESUME=.../checkpoint-2000`).
+- `abl2/checkpoint-3000/` = ablation abl2 (raymap token, no goal aux): run `goalprog_appearance_nogoalaux` step 3000
+  (no optimizer). Results: `abl/II_nogoalaux_ckpt3000.tar`.
+- `abl4/checkpoint-1000/` = ablation abl4 (no L_vcons): run `goalprog_dl3dv_camfix_d10_dpt_cont5k` step 1000
+  (= 5000 + 1000 = "ck 6000" in the tables), with optimizer. Results: `abl/IV_cont5k_ckpt6000.tar`.
 
 Results: dataset `{DATA}`. Code: GitHub egowam / evalwam branch `wip-20261122`.
 """

@@ -4,6 +4,7 @@ Reads results_syn/coherence_validation/{syn_valbench120,real_lookoutC35}/perturb
 and da3_focal/focal.log (tools/da3_focal_check.py). Rebuilt on every request (server.py reloads this module).
 """
 import ast, html, json, os
+import numpy as np
 
 CV = "/root/project/egowam/results_syn/coherence_validation"
 SETS = [("syn", "synthetic · valbench5s 120", "syn_valbench120"), ("real", "real · LookOut C 35 (좌우 보정 GT)", "real_lookoutC35")]
@@ -314,6 +315,241 @@ def vdesign_section():
     return "".join(P)
 
 
+GC = "/root/project/egowam/results_syn/gtcam_cmp"
+MFIG = "/root/project/egowam/results_syn/goalprog_mode_real6_nomr_hg0_grad0.5_direct/vcons_cmp/page/motion_met3r.png"
+
+
+def _motion_scatter(d, title, rho_m):
+    """inline SVG: x = motion / GT, y = MEt3R (stride 1); ours blue, Aether orange, other baselines gray; OLS line over all."""
+    W_, H_, L, R_, T, B = 600, 400, 54, 18, 34, 46
+    NAME = {"aether_planning": "Aether (planning)"}
+    pts = [(o["motion_ratio"], o["met3r"], m, NAME.get(m, o["label"])) for m, o in d.items()]
+    xmax = max(1.6, max(p[0] for p in pts) * 1.08)
+    step = next(s_ for s_ in (0.01, 0.02, 0.025, 0.05) if max(p[1] for p in pts) * 1.1 / s_ <= 6)
+    ymax = step * np.ceil(max(p[1] for p in pts) * 1.1 / step)
+    X = lambda v: L + v / xmax * (W_ - L - R_); Y = lambda v: H_ - B - v / ymax * (H_ - T - B)
+    col = lambda m: "var(--s1)" if m.startswith("ours") else ("var(--s2)" if m.startswith("aether") else "var(--mut)")
+    g = [f"<svg viewBox='0 0 {W_} {H_}' style='width:100%;max-width:{W_}px;height:auto' role=img aria-label='{html.escape(title)}'>",
+         f"<text x={L} y=18 font-size=13 font-weight=600 fill='var(--ink)'>{html.escape(title)}</text>",
+         f"<text x={W_ - R_} y=18 font-size=11 text-anchor=end fill='var(--ink2)'>모델 간 Spearman {rho_m:.3f}</text>"]
+    for k in range(int(round(ymax / step)) + 1):                          # y grid
+        v = step * k; y = Y(v)
+        g.append(f"<line x1={L} x2={W_ - R_} y1={y:.1f} y2={y:.1f} stroke='var(--grid)'/><text x={L - 6} y={y + 4:.1f} font-size=10 text-anchor=end fill='var(--mut)'>{v:.3f}</text>")
+    for v in [i * 0.2 for i in range(int(xmax / 0.2) + 1)]:                 # x ticks
+        g.append(f"<text x={X(v):.1f} y={H_ - B + 16} font-size=10 text-anchor=middle fill='var(--mut)'>{v:.1f}</text>")
+    g.append(f"<line x1={L} x2={W_ - R_} y1={H_ - B} y2={H_ - B} stroke='var(--line)'/>")
+    g.append(f"<line x1={X(1):.1f} x2={X(1):.1f} y1={T} y2={H_ - B} stroke='var(--ink2)' stroke-dasharray='4 4'/>"
+             f"<text x={X(1) + 4:.1f} y={T + 10} font-size=10 fill='var(--ink2)'>GT와 같은 움직임</text>")
+    xs = np.array([p[0] for p in pts]); ys = np.array([p[1] for p in pts]); b1, b0 = np.polyfit(xs, ys, 1)
+    g.append(f"<line x1={X(0):.1f} y1={Y(b0):.1f} x2={X(xmax):.1f} y2={Y(b0 + b1 * xmax):.1f} stroke='var(--mut)' stroke-width=1 stroke-dasharray='2 3' opacity=.7/>")
+    g.append(f"<text x={W_ - R_} y={H_ - 8} font-size=11 text-anchor=end fill='var(--ink2)'>움직임 / GT (프레임 간 평균 변화, 같은 영역) →</text>"
+             f"<text x=12 y={T + (H_ - T - B) / 2:.0f} font-size=11 fill='var(--ink2)' transform='rotate(-90 12 {T + (H_ - T - B) / 2:.0f})' text-anchor=middle>MEt3R (stride 1) ↓ 좋음</text>")
+    # labels: first free slot among right / left / above / below (boxes vs placed labels and all points), else nudge down
+    P_ = [(X(x), Y(y)) for x, y, _, _ in pts]
+    boxes = []
+
+    def free(bx):
+        x0, y0, x1, y1 = bx
+        if x0 < L or x1 > W_ - 2 or y0 < T - 6 or y1 > H_ - B:
+            return False
+        if any(not (x1 < a0 or x0 > a1 or y1 < b0_ or y0 > b1_) for a0, b0_, a1, b1_ in boxes):
+            return False
+        return not any(x0 - 6 < cx < x1 + 6 and y0 - 6 < cy < y1 + 6 for cx, cy in P_)
+    for x, y, m, l in sorted(pts, key=lambda p: -p[0]):
+        px, py = X(x), Y(y); w = 6.2 * len(l) + 4; hh = 12
+        cand = [("start", px + 9, py + 4, (px + 8, py - 8, px + 8 + w, py + 4)), ("end", px - 9, py + 4, (px - 8 - w, py - 8, px - 8, py + 4)),
+                ("middle", px, py - 11, (px - w / 2, py - 21, px + w / 2, py - 9)), ("middle", px, py + 20, (px - w / 2, py + 9, px + w / 2, py + 21))]
+        pick = next((c for c in cand if free(c[3])), None)
+        lead = False
+        if pick is None:
+            anc, lx, ly, bx = cand[0]
+            for k in range(1, 12):
+                b2 = (bx[0], bx[1] + 13 * k, bx[2], bx[3] + 13 * k)
+                if free(b2):
+                    pick = (anc, lx, ly + 13 * k, b2); lead = True; break
+            pick = pick or cand[0]
+        anc, lx, ly, bx = pick; boxes.append(bx)
+        g.append(f"<g><title>{html.escape(l)} · 움직임/GT {x:.3f} · MEt3R {y:.3f}</title>"
+                 f"<circle cx={px:.1f} cy={py:.1f} r={7 if m.startswith('ours') else 5.5} fill='{col(m)}' stroke='var(--card)' stroke-width=2/>"
+                 + (f"<line x1={px:.1f} y1={py:.1f} x2={lx - 2:.1f} y2={ly - 4:.1f} stroke='var(--line)'/>" if lead else "")
+                 + f"<text x={lx:.1f} y={ly:.1f} font-size=11 text-anchor={anc} fill='var(--ink{'' if m.startswith(('ours', 'aether')) else '2'})'"
+                 + (" font-weight=600" if m.startswith("ours") else "") + f">{html.escape(l)}</text></g>")
+    g.append("</svg>")
+    # var() is not valid inside SVG presentation attributes (fill='var(--x)' is ignored -> black / no stroke, invisible in
+    # dark mode): move every fill / stroke that uses a CSS variable into the style attribute
+    import re as _re
+
+    def _fix(mt):
+        tag = mt.group(0); st = []
+        for a in ("fill", "stroke"):
+            m2 = _re.search(rf" {a}='(var\(--[\w-]+\))'", tag)
+            if m2:
+                st.append(f"{a}:{m2.group(1)}"); tag = tag.replace(m2.group(0), "")
+        return tag if not st else tag.replace(">", f" style='{';'.join(st)}'>", 1) if not tag.endswith("/>") else tag[:-2] + f" style='{';'.join(st)}'/>"
+    return _re.sub(r"<(?:line|circle|text)\b[^>]*>", _fix, "".join(g))
+
+
+def gtcam_section():
+    """GT-camera-conditioned: ours camcond vs Aether gtcam (tools/gtcam_cmp.py, tools/gtcam_fair.py), metric groups and order
+    as /early · /ablation (report_suite.ROWS)."""
+    if not os.path.exists(f"{GC}/gtcam_cmp.json"):
+        return ""
+    R = json.load(open(f"{GC}/gtcam_cmp.json"))
+    F = json.load(open(f"{GC}/fair.json")) if os.path.exists(f"{GC}/fair.json") else {}
+    FV = json.load(open(f"{GC}/fair_fvd.json")) if os.path.exists(f"{GC}/fair_fvd.json") else {}
+    ML = [("ours_cc", "ours · GT 카메라"), ("aether_gtcam", "Aether · GT 카메라"), ("ours_plan", "ours · planning"), ("aether_plan", "Aether · planning")]
+    # (group, label, source, key, dir)   source: fv = same-crop set-level, fair = same-crop per window, cmp = /cmp per window
+    ROWS = [("Video quality", "FVD16", "fv", "fvd16", -1), ("Video quality", "FVD77 (전체 프레임)", "fv", "fvd77", -1),
+            ("Video quality", "MUSIQ", "fv", "musiq", 1),
+            ("3D consistency", "PSNR (77프레임)", "fair", "psnr77", 1), ("3D consistency", "SSIM (77프레임)", "fair", "ssim77", 1),
+            ("3D consistency", "LPIPS (77프레임)", "fair", "lpips77", -1),
+            ("3D consistency", "움직임: 프레임 간 평균 변화 (0–255, 프레임 1–76) — 참고", "fair", "motion", 0),
+            ("3D consistency", "움직임 / GT — 참고", "fair", "motion_ratio", 0),
+            ("3D consistency", "MEt3R (stride 1)", "fair", "met3r_s1", -1), ("3D consistency", "MEt3R (stride 4)", "fair", "met3r", -1),
+            ("3D consistency", "움직임: 프레임 16–76 — 참고", "fair", "motion_t16", 0),
+            ("3D consistency", "움직임 / GT: 프레임 16–76 — 참고", "fair", "motion_ratio_t16", 0),
+            ("3D consistency", "MEt3R (stride 1) · 프레임 16–76", "fair", "met3r_s1_t16", -1),
+            ("3D consistency", "MEt3R (stride 4) · 프레임 16–76", "fair", "met3r_t16", -1),
+            ("Action faithfulness (AF · action vs GT)", "RotErr° ‡", "cmp", "act_rot", -1),
+            ("Action faithfulness (AF · action vs GT)", "ATE ‡", "cmp", "act_ate", -1),
+            ("Video-action coherence (VA · action vs 영상의 DA3)", "depth AbsRel", "cmp", "d_absrel", -1),
+            ("Video-action coherence (VA · action vs 영상의 DA3)", "depth δ<1.25", "cmp", "d_d1", 1),
+            ("Video-action coherence (VA · action vs 영상의 DA3)", "depth δ<1.5", "cmp", "d_d15", 1),
+            ("Video-action coherence (VA · action vs 영상의 DA3)", "cam RotErr° ‡", "cmp", "coh_rot", -1),
+            ("Video-action coherence (VA · action vs 영상의 DA3)", "cam ATE / path ‡", "cmp", "coh_ate", -1),
+            ("Video-action coherence (VA · action vs 영상의 DA3)", "cam CamMC ‡ (77프레임, DA3 단위)", "cmp", "coh_cammc", -1),
+            ("Goal achievement", "goal SR (DA3 카메라)", "cmp", "goal_succ", 1), ("Goal achievement", "goal SR (action) ‡", "cmp", "goal_act", 1),
+            ("Goal achievement", "goal 이미지 LPIPS †", "cmp", "goal_lpips", -1), ("Goal achievement", "goal 이미지 DINO †", "cmp", "goal_dino", 1),
+            ("DA3 camera vs GT (VM · 영상이 주어진/생성 카메라를 따르는가)", "RotErr°", "cmp", "cam_rot", -1),
+            ("DA3 camera vs GT (VM · 영상이 주어진/생성 카메라를 따르는가)", "TransErr", "cmp", "cam_trans", -1),
+            ("DA3 camera vs GT (VM · 영상이 주어진/생성 카메라를 따르는가)", "ATE", "cmp", "cam_ate", -1)]
+
+    def get(grp, src, k, m):
+        if src == "fv":
+            return FV.get(grp, {}).get(m, {}).get(k)
+        if src == "fair":
+            return F.get(grp, {}).get("mean", {}).get(k, {}).get(m)
+        return R[grp]["groups"]["all"]["mean"].get(k, {}).get(m)
+
+    def pair(grp, src, k):
+        if src == "fv":
+            return None
+        if src == "fair":
+            return F.get(grp, {}).get("paired", {}).get("ours_cc-aether_gtcam", {}).get(k)
+        return R[grp]["groups"]["all"]["paired"].get("ours_cc-aether_gtcam", {}).get(k)
+
+    def dcell(p, d):
+        if not p:
+            return "<td>–</td>"
+        good = p["d"] * d > 0; sig = (p["ci"][0] > 0) == (p["ci"][1] > 0)
+        return (f"<td style='color:var({'--dn' if good else '--up'});{'font-weight:600' if sig else ''}'>{p['d']:+.3f}"
+                f"<div class=small>[{p['ci'][0]:+.3f}, {p['ci'][1]:+.3f}]</div></td>")
+    f3_ = lambda v: "<td>–</td>" if v is None else f"<td>{v:.3f}</td>"
+    SRC = {"fv": "같은 crop · 세트", "fair": "같은 crop", "cmp": "/cmp 규약"}
+    P = ["<h2 id=gtcam>GT 카메라를 줬을 때: ours vs Aether</h2>"
+         "<div class=mut>두 모델 모두 GT 카메라 경로를 조건으로 받아 생성. ours = avg 7500+8750, GT raymap 입력 (mode 0); "
+         "Aether = AetherV1 prediction 모드 (GT camera raymap, 41프레임 2청크, 둘째 청크는 첫 청크의 마지막 생성 프레임에서 시작; "
+         "HF wandering_inference_comparison_output/aether_gtcam). planning 열 = 각 모델이 카메라도 직접 만든 기존 결과 (참고). "
+         "창 = /ablation과 같은 synthetic 120 · real LookOut A+B+C 120. 지표 묶음 · 순서 = /early · /ablation과 같음. "
+         "<b>같은 crop</b> = 모든 영상을 Aether가 보는 영역 (512×512 GT의 중앙 띠 512×342)으로 자르고 GT 창의 같은 77프레임에 맞춰 다시 계산 "
+         "(PSNR/SSIM/LPIPS = eval_video_quality.py 함수, 77프레임 전체 평균; MEt3R = eval_met3r.py 설정; FVD = I3D cd-fvd 256², 기준 = 같은 crop의 GT). "
+         "<b>/cmp 규약</b> = 논문 표와 같은 창별 값. 차이 괄호 = paired bootstrap 95% CI (세트 단위 FVD/MUSIQ는 CI 없음). 같은 crop 칸 아래 작은 글씨 = 창별 중앙값 (n &lt; 120이면 계산 중).</div>"]
+    import glob as _g, time as _t
+    cnt = {}
+    for f in _g.glob(f"{GC}/fair/*.json"):
+        m_, t_ = os.path.basename(f).split("_")[0], os.path.basename(f).split("_")[1][0]
+        cnt.setdefault(m_, [0, 0])[0 if t_ == "v" else 1] += 1
+    lab_ = {"fid": "PSNR/SSIM/LPIPS", "f0": "프레임 0", "met3r": "MEt3R s4", "met3r1": "MEt3R s1", "motion": "움직임",
+            "met3rT": "MEt3R s4 · 16–76", "met3r1T": "MEt3R s1 · 16–76"}
+    last = max((os.path.getmtime(f"{GC}/{x}") for x in ("fair.json", "gtcam_cmp.json") if os.path.exists(f"{GC}/{x}")), default=0)
+    P.append("<div class=note>마지막 집계 " + _t.strftime("%m-%d %H:%M:%S", _t.localtime(last)) + " (진행 중에는 2분마다 자동 재집계) · 같은 crop 진행: "
+             + " · ".join(f"{lab_.get(k, k)} syn {v[0]}/120 · real {v[1]}/120" for k, v in sorted(cnt.items())) + "</div>")
+    for grp, title in (("synthetic", "synthetic · valbench5s 120"), ("real", "real · LookOut A+B+C 120")):
+        h = ("<tr><th>지표</th><th>계산</th>" + "".join(f"<th>{l}</th>" for _, l in ML) + "<th>ours − Aether (GT 카메라)</th></tr>")
+        b = ""; g0 = None
+        for g, lab, src, k, d in ROWS:
+            vals = [get(grp, src, k, m) for m, _ in ML]
+            if all(v is None for v in vals):
+                continue
+            if g != g0:
+                b += f"<tr><th colspan={len(ML) + 3} class=grp style='text-align:left'>{html.escape(g)}</th></tr>"; g0 = g
+            trivial = k in ("act_rot", "act_ate", "goal_act")      # ours GT-camera run: action = the given GT camera itself
+            def cell(m, v):
+                if trivial and m == "ours_cc":
+                    return f"<td class=small>{'0' if k != 'goal_act' else '1'} (입력 = GT, 정의상)</td>"
+                if src == "fair" and v is not None:
+                    md = F[grp].get("median", {}).get(k, {}).get(m); n_ = F[grp].get("count", {}).get(k, {}).get(m)
+                    return (f"<td>{v:.3f}<div class=small>중앙 {md:.3f}" + (f" · n {n_}" if n_ and n_ < 120 else "") + "</div></td>") if md is not None else f3_(v)
+                return f3_(v)
+            cells = "".join(cell(m, v) for (m, _), v in zip(ML, vals))
+            arrow = "" if d == 0 else ("↑" if d > 0 else "↓")
+            p_ = pair(grp, src, k)
+            dc = (f"<td>{p_['d']:+.3f}<div class=small>[{p_['ci'][0]:+.3f}, {p_['ci'][1]:+.3f}]</div></td>" if p_ else "<td>–</td>") if d == 0 else dcell(p_, d)
+            gtv = F.get(grp, {}).get("mean", {}).get(k, {}).get("gt") if src == "fair" else None
+            lab2 = lab + (f" (GT {gtv:.3f})" if gtv is not None and k.startswith("motion") else "")
+            b += (f"<tr><td>{html.escape(lab2)} {arrow}</td><td class=small>{SRC[src]}</td>" + cells
+                  + ("<td class=small>비교 불가</td>" if trivial else dc) + "</tr>")
+        ref = []
+        if FV.get(grp, {}).get("gt", {}).get("musiq") is not None:
+            ref.append(f"GT MUSIQ {FV[grp]['gt']['musiq']:.3f}")
+        for k, n in (("met3r_s1", "s1"), ("met3r", "s4"), ("met3r_s1_t16", "s1 · 16–76"), ("met3r_t16", "s4 · 16–76")):
+            v = F.get(grp, {}).get("mean", {}).get(k, {}).get("gt"); md = F.get(grp, {}).get("median", {}).get(k, {}).get("gt")
+            c_ = F.get(grp, {}).get("count", {}).get(k, {}).get("gt")
+            if v is not None:
+                ref.append(f"GT MEt3R {n} 평균 {v:.3f} · 중앙 {md:.3f}" + (f" (n {c_})" if c_ and c_ < 120 else ""))
+        P.append(f"<h3>{title}</h3><div class=tw><table>{h}{b}</table></div>"
+                 + (f"<div class=mut small>참고: {' · '.join(ref)}</div>" if ref else ""))
+    if os.path.exists(f"{GC}/motion_all.json"):
+        from scipy import stats as _st
+        MA = json.load(open(f"{GC}/motion_all.json"))
+        P.append("<h3 id=motion>모든 비교 모델: 움직임 양 vs MEt3R</h3><div class=mut>움직임 = 프레임 간 평균 변화 (0–255, 프레임 1–76)를 각 모델이 보는 영역 "
+                 "(그 모델의 gt_crop_box, 없으면 전체)에서 재고, 같은 영역의 GT와 나눈 비율. MEt3R = /cmp 규약의 창별 값 (stride 1; 모델마다 해상도 · 영역이 달라 "
+                 "절대값은 참고). ρ = 창별 Spearman (움직임 비율 vs MEt3R), 기울기 = 움직임 비율 +0.1당 MEt3R 변화. 코드: tools/motion_all.py</div>")
+        figs, tabs = [], []
+        FVJ = f"{GC}/motion_fig_values.json"          # exactly the plotted points (tools/motion_fig.py)
+        FV_ = json.load(open(FVJ)) if os.path.exists(FVJ) else {}
+        for grp, title in (("synthetic", "Synthetic"), ("real", "Real")):
+            d = MA.get(grp, {}); fv = FV_.get(grp)
+            if not d or not fv:
+                continue
+            h = ("<tr><th>모델</th><th>계열</th><th>움직임 / GT</th><th>MEt3R ↓</th><th>값 출처</th>"
+                 "<th>참고: 창별 ρ (p) · 전체 프레임</th></tr>")
+            b_ = ""
+            for q in fv["points"]:
+                o = d.get(q["model"], {}); m = q["model"]
+                bold = " style='font-weight:600'" if m.startswith("ours") else ""
+                rho = (f"{o['rho']:+.3f} ({'&lt;0.001' if o['rho_p'] < 1e-3 else format(o['rho_p'], '.3f')})"
+                       if "rho" in o and m not in ("ours_cc", "aether_gtcam", "ours_plan") else "–")
+                b_ += (f"<tr{bold}><td>{html.escape(q['label'])}</td><td>{html.escape(q['family'])}</td><td>{q['motion_ratio']:.3f}</td>"
+                       f"<td>{q['met3r']:.3f}</td><td class=small>{html.escape(q['source'])}</td><td>{rho}</td></tr>")
+            tabs.append(f"<h4>{title} — 모델 간 Spearman {fv['spearman']:.3f}</h4><div class=tw><table>{h}{b_}</table></div>")
+        P.append("<div class=mut small>색 = 방법 계열 (진보라 Joint · 마젠타 Pose-then-generate · 라벤더 Plan-then-generate · 연분홍 Video-only), "
+                 "속 빈 원 = + GT camera, 기울어진 점선 = 모든 모델에 맞춘 직선, 세로 점선 = GT와 같은 움직임. 그림과 표는 같은 값 (tools/motion_fig.py → "
+                 "gtcam_cmp/motion_fig_values.json): Ours는 논문 표 값, + GT camera 두 run은 프레임 16–76 · 공통 crop 값, 나머지는 /cmp 창별 평균.</div>"
+                 + (f"<img src='/vcons/motion_met3r.png?v={int(os.path.getmtime(MFIG))}' style='width:100%;max-width:1300px;background:#fff;border-radius:8px' "
+                    "alt='motion vs MEt3R scatter'>" if os.path.exists(MFIG) else "")
+                 + f"<details><summary>표로 보기</summary>{''.join(tabs)}</details>")
+        EXJ = "/root/project/egowam/results_syn/gtcam_cmp/examples/examples.json"
+        if os.path.exists(EXJ):
+            P.append("<h3 id=met3r_ex>예시: MEt3R이 낮은 건 덜 움직여서</h3><div class=mut>같은 창 · 같은 영역 (512×512 GT의 중앙 띠 512×342) · 같은 77프레임에서 "
+                     "GT / Ours / NWM / EgoWM의 MEt3R (stride 1)과 움직임 (GT 대비)을 새로 잼. 고른 기준: Ours 움직임이 GT의 0.9–1.1배이고 같은 영역 MEt3R이 GT와 가까우며, "
+                     "NWM · EgoWM은 GT의 0.3배 미만으로 움직이고 MEt3R이 Ours보다 낮은 창 (real은 구조가 뚜렷하고 GT 시점 변화가 큰 창으로 고름: 쇼핑몰 통로 · 거리). "
+                     "NWM · EgoWM은 장면이 거의 안 움직이면서 무너지는데도 MEt3R이 GT보다 낮게 나옴. 코드: tools/met3r_examples.py, tools/met3r_example_fig.py</div>")
+            _sel = os.path.join(os.path.dirname(EXJ), "selected.json")
+            for k in (json.load(open(_sel)) if os.path.exists(_sel) else json.load(open(EXJ))):
+                f_ = f"{os.path.dirname(MFIG)}/met3r_example_{k}.png"
+                if os.path.exists(f_):
+                    P.append(f"<img src='/vcons/met3r_example_{k}.png?v={int(os.path.getmtime(f_))}' style='width:100%;max-width:1300px;background:#fff;"
+                             f"border-radius:8px;margin:8px 0' alt='MEt3R example {k}'>")
+        P.append("<div class=mut small>움직임이 GT보다 적은 모델일수록 MEt3R이 낮음 (거의 같은 프레임끼리 비교하면 불일치가 생길 여지가 없음). "
+                 "MEt3R 단독 순위는 3D 일관성보다 움직임 양을 더 많이 반영하므로, 움직임과 함께 보고해야 함.</div>")
+    P.append("<div class=mut small>† 입력 차이: ours는 goal 이미지도 받고 Aether GT 카메라 모드는 받지 않음 → goal 이미지 지표와 화질 (특히 뒤쪽 프레임)은 ours에 유리 "
+             "(Aether planning은 goal을 마지막 프레임으로 받음). ‡ action의 뜻이 두 모델에서 다름: ours GT 카메라 run의 action = 주어진 GT 카메라 그대로 "
+             "(AF는 정의상 0, goal SR(action)은 정의상 1, VA cam = 주어진 카메라 vs 영상의 DA3 카메라), Aether GT 카메라 run의 action = Aether가 "
+             "영상과 함께 다시 생성한 카메라. VA depth = 모델이 낸 depth vs 영상의 DA3 depth. VM은 Aether는 crop된 띠에서, ours는 512×512 전체에서 DA3를 돌린 값. "
+             "코드: tools/gtcam_cmp.py, tools/gtcam_fair.py</div>")
+    return "".join(P)
+
 GV = "/root/project/egowam/results_syn/goal_validation/goal_aug.json"
 
 
@@ -479,7 +715,7 @@ def page():
     P = [f"<!doctype html><html lang=ko><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
          f"<title>Rebuttal Experiments</title><style>{CSS}</style></head><body><main>",
          "<h1>Rebuttal 실험</h1><div class=mut>Video–Action Coherence 지표 검증 (controlled perturbation · DA3 측정 편향) · "
-         "<a href=#vcons>Direct vs Residual 메커니즘</a> · <a href=#goal>Goal supervision · 외형 augmentation</a> · <a href=#trav>Traversal 난이도</a> · <a href=#vdesign>Residual 설계 선택</a> · <a href=/ablation>/ablation</a> · <a href=/>홈</a></div>"]
+         "<a href=#vcons>Direct vs Residual 메커니즘</a> · <a href=#goal>Goal supervision · 외형 augmentation</a> · <a href=#trav>Traversal 난이도</a> · <a href=#vdesign>Residual 설계 선택</a> · <a href=#gtcam>GT 카메라: ours vs Aether</a> · <a href=/ablation>/ablation</a> · <a href=/>홈</a></div>"]
     if not S:
         P.append("<p>결과 없음: tools/coherence_perturb.py 를 먼저 실행</p></main></body></html>")
         return "".join(P).encode()
@@ -576,6 +812,7 @@ def page():
     P.append(goal_section())
     P.append(traversal_section())
     P.append(vdesign_section())
+    P.append(gtcam_section())
     P.append("<h2>방법 (coherence 검증)</h2><div class=mut small><ul>"
              "<li>영상 = GT 영상, 카메라 = DA3-LARGE-1.1 (ref view = first, suite와 동일), 파일 viz_da3_fix/sample_NN_da3_gt_poses.npy</li>"
              "<li>action = GT 궤적 → 프레임별 ego action (dx, dy, dyaw) → GT 시작 pose에서 적분. perturbation은 action에만 넣음</li>"

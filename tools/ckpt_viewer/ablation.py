@@ -62,6 +62,22 @@ ABL = {
                 "ckpt": "avg_eval/checkpoint-a7500_8750 (학습 시 raymap_pred_prob 0.5 → mode 0도 학습됨)",
                 "pipe": "multi/camcond_vb.sh · tmux camcond_vb · 로그 multi/camcond_vb.out · "
                         "real(LookOut) = abl/lo120_camcond.sh (--cond_mirror_lr: 조건 카메라만 좌우 보정, GT 평가는 _lh) · tmux camcond_lo"},
+    "camgoal": {"col": "ours · 카메라 조건 + goal 외형 변화 (mode 1)", "dir": f"{H}/ckpta7500_8750_camcond_goalstyle", "lookout": False,
+                "lo_note": "미실행 (synthetic만)",
+                "what": "같은 avg 7500+8750에 GT 카메라(raymap)를 입력으로 주고 (mode 0처럼) goal 이미지는 mode 3과 같은 telestyle 편집본 "
+                        "(mode_idx 1 = cond+swap). 2×2 모드 표의 마지막 칸. 창·seed·goal 프레임 동일, goal 지표는 원본 goal 프레임 기준",
+                "ckpt": "avg_eval/checkpoint-a7500_8750 (학습 시 raymap_pred_prob 0.5, goal_swap_prob 0.5)",
+                "pipe": "multi/camcond_goalstyle_vb.sh · tmux mode1_vb · 로그 multi/camcond_goalstyle_vb.out · 편집본 = ckpta7500_8750_goalstyle의 것 재사용"},
+    "recon": {"col": "ours · RECON zero-shot (×4 보간)", "dir": f"{H}/ckpta7500_8750/recon_nwmtest120_x4",
+              "sets": [("RECON ×4 · NWM test split 120", f"{H}/ckpta7500_8750/recon_nwmtest120_x4"),
+                       ("RECON ×4 · 날짜 split test 120 (2019-12, 2020-01)", f"{H}/ckpta7500_8750/recon_test120_x4")],
+              "what": "같은 avg 7500+8750, mode 2 (카메라 예측 + 원본 goal), RECON(Jackal 지상 로봇, 실제)에 zero-shot. 학습에 RECON 없음. "
+                      "원본 ~3.6 Hz는 프레임당 회전이 CARLA의 7.8배라 RIFE v4.26으로 ×4 보간 (실제 프레임 = 4장에 1장): "
+                      "77프레임 = 원본 19스텝 ≈ 5.3 s (CARLA 4.8 s), 프레임당 이동 ≈ 0.064 m · 회전 ≈ 1.7°. goal = 실제 프레임 (원본 s+20). "
+                      "원본 fps 추론은 30/240에서 중단",
+              "ckpt": "avg_eval/checkpoint-a7500_8750",
+              "pipe": "데이터: /root/data/RECON/fetch.sh → tools/build_recon_x4.py (RIFE, /root/data/RECON/recon_syn_x4) · "
+                      "평가: multi/recon_x4.sh · tmux recon_x4 · 로그 multi/recon_x4.out · manifest results_syn/recon_{nwmtest120,bench120}_x4.json"},
 }
 # same-run reference near the ablation's step (valbench only: early main ckpts have no LookOut 120)
 STEPREF = ("참고 · 메인 ck 2250", f"{H}/ckpt2250")
@@ -92,11 +108,25 @@ AXES = [
     {"id": "goalapp", "title": "축 4 · goal 외형 변화 (원본 goal vs 편집 goal)",
      "groups": [{"base": OURS, "runs": ["goalstyle"], "syn_only": True,
                  "note": "같은 모델·같은 창. goal 이미지만 다른 계절/시간대/실사풍으로 바꿔도 같은 장소로 가는지. "
-                         "goal image LPIPS·DINO는 원본 goal 프레임과 비교 (도착해야 할 곳). synthetic만."}]},
+                         "goal image LPIPS·DINO는 원본 goal 프레임과 비교 (도착해야 할 곳). synthetic만."},
+                {"base": "camcond", "runs": ["camgoal"], "syn_only": True, "sub": "카메라 조건 (GT raymap) 상태에서 goal 외형 변화: mode 0 vs mode 1",
+                 "note": "두 열 모두 GT 카메라를 입력으로 받음. goal 이미지만 원본(mode 0) vs telestyle 편집본(mode 1). 기준 = mode 0, Δ = mode 1 − mode 0. "
+                         "카메라가 입력이라 '예측 카메라 vs GT' 행은 비거나 무의미 → '생성 영상의 DA3 카메라 vs GT' 행으로 비교."}]},
     {"id": "mode", "title": "축 3 · 카메라 입력 모드 (예측 vs 조건)",
      "groups": [{"base": OURS, "runs": ["camcond"],
                  "note": "같은 모델·같은 창. 조건 모드는 카메라가 입력이라 '예측 카메라 vs GT' 행이 무의미하거나 비어 있음 → "
-                         "'생성 영상의 DA3 카메라 vs GT'(Extra) 행으로 카메라를 얼마나 따랐는지 비교. real은 LookOut GT 좌우 반전을 조건 카메라에만 보정해서 넣음."}]},
+                         "'생성 영상의 DA3 카메라 vs GT'(Extra) 행으로 카메라를 얼마나 따랐는지 비교. real은 LookOut GT 좌우 반전을 조건 카메라에만 보정해서 넣음."},
+                {"base": OURS, "runs": ["camcond", "camgoal", "goalstyle"], "syn_only": True,
+                 "sub": "2×2 모드 전체: mode 2 (예측·원본 goal) vs 0 (조건·원본) vs 1 (조건·편집 goal) vs 3 (예측·편집 goal)",
+                 "note": "같은 모델·같은 창·seed. mode_idx = 2×카메라예측 + goal교체. 기준 = mode 2 (ours), Δ = 열 − mode 2. "
+                         "mode 1·3은 goal 이미지가 편집본이고 goal 지표는 원본 goal 프레임 기준. synthetic만."}]},
+    {"id": "recon", "title": "축 5 · RECON zero-shot (실제 지상 로봇, 학습에 없음)",
+     "groups": [{"base": "recon", "runs": [],
+                 "note": "valbench5s와 같은 지표 정의 (suite + cam77 + MEt3R s1). 비교 열 없음 (RECON에서 돌린 다른 run 없음). "
+                         "×4 보간 세트: 전체 77프레임 표의 PSNR/LPIPS/FVD는 RIFE 보간 GT 포함 → 실제 프레임만 표(생성 영상 4장에 1장 vs 실제 GT 20장)를 같이 볼 것. "
+                         "카메라·goal 지표 GT pose는 실제 프레임에서 정확, 사이는 선형 보간. "
+                         "NWM test split = NWM 논문 test 궤적에서 뽑은 120창 (지표는 우리 것이라 NWM 표 숫자와 직접 비교 불가). "
+                         "tier(easy/medium/hard)는 ×4 window(≈ 5.3 s) 77프레임 동안의 순 회전량으로 다시 매김 (valbench와 같은 구간 기준, 30° 미만은 below_easy)."}]},
 ]
 
 
@@ -162,6 +192,10 @@ def _lo(run, w):
 
 def _progress(a):
     d = a["dir"]; n = lambda p: len(glob.glob(p))
+    if a.get("sets"):
+        return "<br>".join(f"{html.escape(t.split(' · ')[1].split(' (')[0])}: 인퍼 {n(f'{sd}/sample_*_vis.mp4')}/120 · 평가 "
+                           f"{'✓' if os.path.exists(f'{sd}/suite_summary.json') else '–'} · MEt3R s1 "
+                           f"{'✓' if os.path.exists(f'{sd}/met3r_s1/met3r.json') else '–'}" for t, sd in a["sets"])
     sp = a.get("split")
     # synthetic = valbench5s (3 x 40 windows), real = LookOut A+B+C (51 + 51 + 35 rollouts; 120 after the exclusion list)
     ns = sum(n(f'{d}/valbench5s/{df}/sample_??.mp4') for df in ("hard", "easy", "medium"))
@@ -182,6 +216,9 @@ def _who(p):
     for a in ABL.values():
         if p == a["dir"] or p.startswith(a["dir"] + "/"):
             return a["col"], a["col"], early._tasklab("/ckpt0/" + p[len(a["dir"]) + 1:])
+        for t, sd in a.get("sets", []):
+            if p == sd or p.startswith(sd + "/"):
+                return a["col"], a["col"], t
     return None, early._runlab(p), early._tasklab(p)
 
 
@@ -276,6 +313,9 @@ def _gpu_section():
     alive = " ".join(PS)
     for a in ABL.values():
         d = a["dir"]
+        if a.get("sets"):
+            Q += [(a["col"], f"{t} 인퍼", "데이터 변환 끝 → GPU 메모리 32GB 이상 비면 시작") for t, sd in a["sets"] if not os.path.isdir(sd)]
+            continue
         for df in ("hard", "easy", "medium"):
             if not os.path.isdir(f"{d}/valbench5s/{df}"):
                 Q.append((a["col"], f"valbench {df} 인퍼", "GPU 메모리 32GB 이상 비면 시작"))
@@ -299,8 +339,45 @@ def _gpu_section():
     return "\n".join(P)
 
 
+def _real_frames(Q, D=None):
+    """[(label, value)] from a RECON x4 real-frame dir (generated [0::4] vs the 20 real GT frames) + the camera on the
+    same 20 real frames (<D>/cam77_sub4.json, cam77.py CAM77_SUB=4), or None."""
+    import csv
+    out = []
+    try:
+        c = json.load(open(f"{D}/cam77_sub4.json"))
+        for p, g in (("act", "카메라 (생성 action vs GT)"), ("coh", "coherence (생성 action vs 생성 영상 DA3)")):
+            out += [(f"{g} · {html.escape(n)} ↓", (c.get(f"{p}_{k}") or {}).get("mean")) for n, k, _ in early.rs.CAM]
+    except Exception:
+        pass
+    try:
+        rows = [r for r in csv.DictReader(open(f"{Q}/video_quality_metrics.csv")) if r.get("psnr")]
+        for k, n in (("psnr", "PSNR ↑"), ("ssim", "SSIM ↑"), ("lpips", "LPIPS ↓")):
+            out.append((n, sum(float(r[k]) for r in rows) / len(rows)))
+        out.append(("샘플 수", float(len(rows))))
+    except Exception:
+        pass
+    try:
+        f = json.load(open(f"{Q}/fvd_musiq.json"))
+        out += [("FVD16 ↓", f.get("fvd16")), ("FVD 20프레임 ↓", f.get(f"fvd{f.get('frames')}")), ("MUSIQ ↑", f.get("musiq"))]
+    except Exception:
+        pass
+    return out or None
+
+
 def _group_tables(g):
     """valbench 120 / per difficulty + LookOut tables for one comparison group (base column first, Δ vs base)."""
+    if isinstance(g["base"], str) and ABL[g["base"]].get("sets"):
+        a = ABL[g["base"]]; P = []
+        for t, sd in a["sets"]:
+            x = early._load(sd)
+            P.append(f"<h3>{html.escape(t)} · 전체 77프레임 (보간 포함)</h3>" + (_dtable([(a["col"], x, False)]) if x else "<div class=mut>평가 대기 중</div>"))
+            r = _real_frames(sd + "_real", sd)
+            if r:
+                P.append(f"<h3>{html.escape(t)} · 실제 프레임만 (20장, 4장에 1장)</h3><div class=mut>화질 = 생성 영상 [0::4] vs 실제 GT 20장 · "
+                         "카메라 = 77프레임으로 적분한 뒤 실제 프레임 20개만 Sim3 정렬·채점 (RPE는 4프레임 간격 기준이라 77프레임 표 RPE와 단위 다름)</div><div class=wrap><table><tr><th>지표</th><th>{html.escape(a['col'])}</th></tr>"
+                         + "".join(f"<tr><td>{n}</td><td>{'–' if v is None else f'{v:.3f}'}</td></tr>" for n, v in r) + "</table></div>")
+        return "\n".join(P)
     base = _run(g["base"])
     runs = [(base[0], base[1], False)] + [(*_run(k), True) for k in g["runs"]]
     ref = [(g["ref"][0], g["ref"][1], False)] if g.get("ref") else []
