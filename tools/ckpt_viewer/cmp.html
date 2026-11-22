@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>베이스라인 비교</title>
+<style>
+:root {
+  --bg: #f3f4f6; --panel: #ffffff; --fg: #1b2230; --muted: #5c6577; --line: #d9dde5;
+  --accent: #2f55c8; --accent-soft: #e4eafb; --ours: #c2410c; --ours-soft: #fde7da;
+  --best: #1f9d55; --best-bg: #d7f2e1; --second: #a87800; --second-bg: #fbefc9;
+  --pos: #1f9d55; --neg: #c0392b;
+  --tile-label: rgba(10, 14, 22, .72);
+  --font-ui: "IBM Plex Sans", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #11151c; --panel: #181d26; --fg: #e3e7ee; --muted: #94a0b4; --line: #2a3140;
+  --accent: #7d9cff; --accent-soft: #232c45; --ours: #fb923c; --ours-soft: #3a2416;
+  --best: #4cd38a; --best-bg: #163a28; --second: #f0c24b; --second-bg: #3d3214;
+  --pos: #4cd38a; --neg: #f87171; color-scheme: dark } }
+* { box-sizing: border-box }
+html, body { margin: 0 }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; line-height: 1.45 }
+.wrap { max-width: 1700px; margin: 0 auto; padding: 0 16px 48px }
+header.top { padding: 18px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline }
+h1 { font-size: 20px; font-weight: 600; margin: 0 }
+h2 { font-size: 15px; font-weight: 600; margin: 0 }
+.sub { color: var(--muted); font-size: 13px }
+a { color: var(--accent) }
+.bar { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); margin: 0 -16px; padding: 10px 16px }
+.bar-inner { max-width: 1700px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center }
+.ctl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap }
+.ctl > span.lab { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+select, button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer }
+button:hover, select:hover { border-color: var(--accent) }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+label.chk { display: inline-flex; gap: 5px; align-items: center; font-size: 13px; cursor: pointer }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden }
+.seg button { border: 0; border-radius: 0; padding: 5px 10px }
+.seg button + button { border-left: 1px solid var(--line) }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff }
+.chips { display: flex; flex-wrap: wrap; gap: 4px }
+.chips button { font-size: 12px; padding: 2px 8px }
+.chips button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent) }
+input[type=range] { accent-color: var(--accent) }
+.main { display: grid; grid-template-columns: 330px minmax(0, 1fr) 230px; gap: 16px; margin-top: 14px; align-items: start }
+@media (max-width: 1300px) { .main { grid-template-columns: minmax(0, 1fr) 230px } .rank { grid-column: 1 / -1; order: 3 } }
+@media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr) } }
+.rank { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; max-height: calc(100vh - 90px); position: sticky; top: 70px }
+.rank-head { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px }
+.rank-list { overflow-y: auto; flex: 1 }
+.rank-list table { width: 100% }
+.rank-list tr { cursor: pointer }
+.rank-list tr:hover td { background: var(--accent-soft) }
+.rank-list tr.cur td { background: var(--accent-soft); color: var(--accent); font-weight: 600 }
+.grid { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 4px }
+.tile { position: relative; aspect-ratio: 1; background: #000; overflow: hidden; border: 2px solid transparent; border-radius: 4px }
+.tile.ours { border-color: var(--ours) }
+.tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none }
+.tl { position: absolute; left: 5px; top: 5px; right: 5px; display: flex; gap: 4px; align-items: center; flex-wrap: wrap }
+.tag, .chip { font-family: var(--font-data); font-size: 12px; color: #fff; background: var(--tile-label); padding: 1px 6px; border-radius: 4px }
+.tile.ours .tag { background: var(--ours) }
+.chip.b1 { background: #1f9d55 } .chip.b2 { background: #e0a800; color: #1a1400 }
+.transport { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 10px }
+.transport input[type=range] { flex: 1 1 200px; min-width: 0 }
+.fr { font-family: var(--font-data); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 110px }
+.status { font-size: 12px; color: var(--muted) }
+.rail { display: flex; flex-direction: column; gap: 12px; min-width: 0 }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px }
+.card img { display: block; width: 100%; border-radius: 4px }
+.cap { font-size: 12px; color: var(--muted) }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 13px; margin: 0 }
+.kv dt { color: var(--muted) } .kv dd { margin: 0; font-family: var(--font-data); font-size: 12px; overflow-wrap: anywhere }
+.diff { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent) }
+.hint { color: var(--muted); font-size: 12px; margin: 6px 0 0 }
+section.blk { margin-top: 26px; display: flex; flex-direction: column; gap: 10px }
+.blk-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline }
+.tbl-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
+th, td { padding: 5px 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line) }
+th:first-child, td:first-child { text-align: left }
+.tbl-wrap th:first-child, .tbl-wrap td:first-child { position: sticky; left: 0; background: var(--panel) }
+thead th { font-weight: 500; font-size: 12px; color: var(--muted) }
+th.ours { color: var(--ours); font-weight: 600 }
+td { font-family: var(--font-data); font-size: 12px }
+td.name { font-family: var(--font-ui); font-size: 13px }
+tr.grp td { font-family: var(--font-ui); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--bg) !important; text-align: left }
+td.b1 { background: var(--best-bg); color: var(--best); font-weight: 600 }
+td.b2 { background: var(--second-bg); color: var(--second); font-weight: 600 }
+td.oc { box-shadow: inset 2px 0 0 var(--ours) }
+th.off, td.off { opacity: .4 }
+tr.hl td.name { color: var(--accent); font-weight: 600 }
+tr.clickable { cursor: pointer } tr.clickable:hover td.name { color: var(--accent) }
+.pos { color: var(--pos) } .neg { color: var(--neg) }
+.dirmark { color: var(--muted); font-size: 11px; margin-left: 4px }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); align-items: center }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px }
+.loading { color: var(--muted); padding: 40px 0 }
+.note { font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px }
+[hidden] { display: none !important }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>베이스라인 비교</h1>
+    <span class="sub" id="sub">불러오는 중…</span>
+    <a class="sub" id="toViewer" href="./">← 체크포인트 뷰어</a>
+  </header>
+
+  <div class="bar"><div class="bar-inner">
+    <div class="ctl"><span class="lab">벤치마크</span><select id="bench"></select></div>
+    <div class="ctl"><span class="lab">Ours</span><select id="ck"></select></div>
+    <div class="ctl" id="diffCtl"><span class="lab">난이도</span><div class="seg" id="diffSeg"></div></div>
+    <div class="ctl"><span class="lab">정렬 지표</span><select id="metric"></select></div>
+    <div class="ctl"><span class="lab">정렬</span><select id="mode">
+      <option value="best">우리 − 최고 베이스라인 (차이 큰 순)</option>
+      <option value="mean">우리 − 베이스라인 평균 (차이 큰 순)</option>
+      <option value="core">핵심 지표 종합 (우리 순위 평균)</option>
+      <option value="idx">번호순</option>
+    </select></div>
+    <label class="chk"><input type="checkbox" id="winOnly"> 우리가 1등인 샘플만</label>
+    <div class="ctl"><span class="lab">열</span><div class="seg" id="colSeg"></div></div>
+    <div class="ctl"><span class="lab">베이스라인</span><div class="chips" id="mchips"></div></div>
+  </div></div>
+
+  <div id="app" class="loading">데이터를 불러오는 중…</div>
+  <div id="content" hidden>
+    <div class="main">
+      <aside class="rank">
+        <div class="rank-head">
+          <h2 id="rankTitle">랭킹</h2>
+          <span class="cap" id="rankCap"></span>
+        </div>
+        <div class="rank-list"><table><thead><tr><th>#</th><th>샘플</th><th>우리</th><th id="rankOther">최고 BL</th><th>차이</th></tr></thead><tbody id="rankBody"></tbody></table></div>
+      </aside>
+      <div>
+        <div class="grid" id="grid"></div>
+        <div class="transport">
+          <button id="play" type="button">재생</button>
+          <select id="rate" aria-label="재생 속도">
+            <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option><option value="2">2×</option>
+          </select>
+          <button id="prev" type="button" aria-label="이전 샘플">◀</button>
+          <button id="next" type="button" aria-label="다음 샘플">▶</button>
+          <input type="range" id="scrub" min="0" max="78" value="0" step="1" aria-label="프레임">
+          <span class="fr" id="frame">0 / 78</span>
+          <span class="status" id="status"></span>
+        </div>
+        <p class="hint">←/→ 랭킹 순 이전·다음 샘플 · 스페이스 재생/정지 · , . 한 프레임 이동. 모든 영상은 프레임 번호로 맞춰 재생해요 (k번째 프레임 = GT 프레임 start+k).</p>
+      </div>
+      <aside class="rail">
+        <div class="card"><h2>Goal</h2>
+          <img id="goalBase" alt="베이스라인 goal">
+          <span class="cap" id="goalBaseCap"></span>
+          <img id="goalOurs" alt="우리 goal">
+          <span class="cap" id="goalOursCap"></span>
+        </div>
+        <div class="card"><h2>샘플</h2><dl class="kv" id="info"></dl></div>
+      </aside>
+    </div>
+
+    <section class="blk">
+      <div class="blk-head"><h2 id="sampTitle">이 샘플의 지표</h2>
+        <div class="legend"><span><i class="sw" style="background:var(--best-bg);border:1px solid var(--best)"></i>1등</span>
+          <span><i class="sw" style="background:var(--second-bg);border:1px solid var(--second)"></i>2등</span>
+          <span>행을 누르면 정렬 지표가 바뀌어요 · 숨긴 베이스라인은 순위에서 빠져요</span></div></div>
+      <div class="tbl-wrap"><table><thead id="sampHead"></thead><tbody id="sampBody"></tbody></table></div>
+    </section>
+
+    <section class="blk">
+      <div class="blk-head"><h2 id="aggTitle">평균</h2><span class="sub" id="aggSub"></span></div>
+      <div class="tbl-wrap"><table><thead id="aggHead"></thead><tbody id="aggBody"></tbody></table></div>
+    </section>
+    <p class="note" id="note"></p>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const GT_FPS = 16;
+const S = { benches: [], bench: null, ck: null, D: null, diff: "all", metric: "cam_ate", mode: "best", winOnly: false,
+            cols: 3, hidden: new Set(), order: [], cur: null, vids: [], playing: false };
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v) } catch (e) { return d } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) {} } };
+const f3 = v => v == null ? "–" : (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(3));
+const sgn = v => v == null ? "–" : (v > 0 ? "+" : "") + f3(v);
+
+function visIdx() {   // column indices (0 = ours) of visible models
+  return S.D.models.map((m, j) => j).filter(j => j === 0 || !S.hidden.has(S.D.models[j].id));
+}
+function ranks(row, dir, cols) {   // rank 1/2 among visible non-null
+  const v = cols.filter(j => row[j] != null).sort((a, b) => (row[b] - row[a]) * dir);
+  const r = {}; if (v[0] != null) r[v[0]] = 1; if (v[1] != null && row[v[1]] !== row[v[0]]) r[v[1]] = 2; return r;
+}
+function ourRank(row, dir, cols) {
+  if (row[0] == null) return null;
+  return 1 + cols.filter(j => j !== 0 && row[j] != null && (row[j] - row[0]) * dir > 0).length;
+}
+function metaOf(k) { return S.D.metrics.find(m => m.key === k) }
+
+function score(s) {   // higher = better showcase for ours
+  const cols = visIdx(), others = cols.filter(j => j !== 0);
+  if (S.mode === "idx") return { sort: -s.i };
+  if (S.mode === "core") {
+    const rs = S.D.metrics.filter(m => m.core).map(m => ourRank(s.m[m.key], m.dir, cols)).filter(x => x != null);
+    const avg = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
+    return { sort: avg == null ? -1e9 : -avg, ours: avg, other: null, gap: null, rank: avg };
+  }
+  const mm = metaOf(S.metric), row = s.m[S.metric], o = row[0];
+  const ov = others.filter(j => row[j] != null);
+  if (o == null || !ov.length) return { sort: -1e9, ours: o, other: null, gap: null, rank: null };
+  let ref, refj = null;
+  if (S.mode === "best") { refj = ov.reduce((a, b) => (row[b] - row[a]) * mm.dir > 0 ? b : a); ref = row[refj]; }
+  else ref = ov.reduce((a, j) => a + row[j], 0) / ov.length;
+  const gap = (o - ref) * mm.dir;
+  return { sort: gap, ours: o, other: ref, otherModel: refj, gap, rank: ourRank(row, mm.dir, cols) };
+}
+
+function buildOrder() {
+  const list = S.D.samples.filter(s => S.diff === "all" || s.diff === S.diff).map(s => ({ s, sc: score(s) }));
+  let out = list;
+  if (S.winOnly) out = out.filter(x => S.mode === "core" ? x.sc.rank === 1 : x.sc.rank === 1);
+  out.sort((a, b) => b.sc.sort - a.sc.sort);
+  S.order = out;
+  const mm = metaOf(S.metric);
+  $("#rankTitle").textContent = S.mode === "core" ? "랭킹 · 핵심 지표 종합" : S.mode === "idx" ? "번호순" : `랭킹 · ${mm.label}`;
+  $("#rankOther").textContent = S.mode === "mean" ? "BL 평균" : S.mode === "core" ? "" : "최고 BL";
+  const wins = list.filter(x => x.sc.rank === 1).length;
+  $("#rankCap").textContent = S.mode === "core"
+    ? `핵심 지표(${S.D.metrics.filter(m => m.core).map(m => m.label).join(", ")})에서 우리 순위 평균이 낮은 순 · ${out.length}개`
+    : `차이 = (우리 − 비교값) × 방향, 클수록 우리가 좋음 · 우리 1등 ${wins}/${list.length}` + (S.winOnly ? ` · ${out.length}개 표시` : "");
+  const tb = $("#rankBody"); tb.innerHTML = "";
+  out.forEach((x, n) => {
+    const tr = document.createElement("tr"); tr.dataset.i = x.s.i;
+    const nm = (x.s.diff ? x.s.diff[0].toUpperCase() + " " : "") + String(x.s.vi ?? x.s.i).padStart(2, "0");
+    const other = S.mode === "core" ? "" : (x.sc.other == null ? "–" : f3(x.sc.other) + (x.sc.otherModel != null ? ` <span class="cap">${S.D.models[x.sc.otherModel].label.split(" ")[0]}</span>` : ""));
+    const gapCell = S.mode === "core" ? (x.sc.ours == null ? "–" : x.sc.ours.toFixed(2) + "등")
+                  : `<span class="${x.sc.gap > 0 ? "pos" : x.sc.gap < 0 ? "neg" : ""}">${sgn(x.sc.gap)}</span>`;
+    tr.innerHTML = `<td>${n + 1}</td><td class="name">${nm}</td><td>${S.mode === "core" ? "" : f3(x.sc.ours)}</td><td>${other}</td><td>${gapCell}</td>`;
+    tr.onclick = () => select(x.s.i);
+    tb.appendChild(tr);
+  });
+  markRank();
+}
+function markRank() {
+  document.querySelectorAll("#rankBody tr").forEach(tr => tr.classList.toggle("cur", +tr.dataset.i === S.cur));
+  const cur = document.querySelector("#rankBody tr.cur"); if (cur) cur.scrollIntoView({ block: "nearest" });
+}
+
+// ---------- video grid
+function vidSrc(j, s) {
+  const m = S.D.models[j];
+  if (j === 0) return `media/${s.vb || S.D.viewer_bench}/${S.D.ck}/sample_${String(s.vi ?? s.i).padStart(2, "0")}.mp4`;
+  if (s.nobase) return null;   // C (turn77): no baseline outputs
+  return `cmpv/${m.id}/${s.src || S.D.bench}/${s.name}/video.mp4`;
+}
+function buildGrid() {
+  const s = S.D.samples.find(x => x.i === S.cur); if (!s) return;
+  stop();
+  const g = $("#grid"); g.innerHTML = ""; S.vids = [];
+  g.style.setProperty("--cols", S.cols);
+  const mk = (label, src, cls, fps, j) => {
+    const t = document.createElement("div"); t.className = "tile " + (cls || "");
+    const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = src;
+    const tl = document.createElement("div"); tl.className = "tl";
+    tl.innerHTML = `<span class="tag">${label}</span>` + (j != null ? `<span class="chip" data-j="${j}"></span>` : "");
+    t.append(v, tl); g.appendChild(t);
+    S.vids.push({ v, fps, j });
+    return v;
+  };
+  S.master = mk(`GT · f${s.first}–${s.last}`, `cmpgt/${s.src || S.D.bench}/${s.vi ?? s.i}.mp4`, "", GT_FPS, null);
+  visIdx().forEach(j => {
+    const m = S.D.models[j];
+    if (!vidSrc(j, s)) return;
+    mk(j === 0 ? `${m.label} · ${s.nf}f` : m.label, vidSrc(j, s), j === 0 ? "ours" : "", j === 0 ? GT_FPS : (m.fps || 16), j);
+  });
+  S.master.addEventListener("ended", () => { if (S.playing) { seekFrame(0); playAll(); } });
+  let ready = 0; const need = S.vids.length; $("#status").textContent = "로딩…";
+  const done = () => { $("#status").textContent = ""; };
+  S.vids.forEach(o => o.v.addEventListener("loadeddata", () => { if (++ready === need) done(); }, { once: true }));
+  setTimeout(done, 6000);
+  chips();
+  const pf = S.pendingFrame || 0; S.pendingFrame = null;
+  seekFrame(pf);
+  if (pf) S.master.addEventListener("loadeddata", () => seekFrame(pf), { once: true });
+}
+function chips() {
+  const s = S.D.samples.find(x => x.i === S.cur); if (!s) return;
+  const mm = metaOf(S.metric), row = s.m[S.metric], r = ranks(row, mm.dir, visIdx());
+  document.querySelectorAll(".chip[data-j]").forEach(c => {
+    const j = +c.dataset.j; c.textContent = `${mm.label.split(" (")[0]} ${f3(row[j])}`;
+    c.className = "chip" + (r[j] ? " b" + r[j] : "");
+  });
+}
+function frameOf() { return Math.floor((S.master ? S.master.currentTime : 0) * GT_FPS) }
+function seekFrame(k) {
+  k = Math.max(0, Math.min(78, k));
+  S.vids.forEach(o => {
+    const d = o.v.duration || 99; o.v.currentTime = Math.min((k + 0.5) / o.fps, Math.max(0, d - 0.01));
+  });
+  showFrame(k);
+}
+function showFrame(k) {
+  const s = S.D.samples.find(x => x.i === S.cur);
+  $("#scrub").value = k; $("#frame").textContent = `${k} / 78 · GT f${s ? s.first + k : k}`;
+}
+function playAll() {
+  const r = +$("#rate").value;
+  S.vids.forEach(o => { o.v.playbackRate = r * o.fps / GT_FPS; const p = o.v.play(); if (p) p.catch(() => {}); });
+  S.playing = true; $("#play").textContent = "정지"; tick();
+}
+function stop() {
+  S.playing = false; S.vids.forEach(o => o.v.pause()); $("#play").textContent = "재생";
+}
+function tick() {
+  if (!S.playing) return;
+  const t = S.master.currentTime, k = t * GT_FPS;
+  S.vids.forEach(o => {
+    if (o.v === S.master) return;
+    const want = Math.min(k / o.fps, (o.v.duration || 99) - 0.01);
+    if (k / o.fps > (o.v.duration || 99)) { if (!o.v.paused) o.v.pause(); }
+    else if (Math.abs(o.v.currentTime - want) > 0.07) o.v.currentTime = want;
+    else if (o.v.paused) { const p = o.v.play(); if (p) p.catch(() => {}); }
+  });
+  showFrame(Math.min(78, Math.floor(k)));
+  requestAnimationFrame(tick);
+}
+
+// ---------- tables
+function sampleTable() {
+  const s = S.D.samples.find(x => x.i === S.cur); if (!s) return;
+  const vis = new Set(visIdx());
+  $("#sampTitle").textContent = `이 샘플의 지표 · ${s.name}`;
+  $("#sampHead").innerHTML = "<tr><th>지표</th>" + S.D.models.map((m, j) =>
+    `<th class="${j === 0 ? "ours" : ""} ${vis.has(j) ? "" : "off"}">${m.label}</th>`).join("") + "</tr>";
+  $("#sampBody").innerHTML = rowsHtml(k => s.m[k]);
+  bindRows("#sampBody");
+}
+function rowsHtml(get) {
+  const cols = visIdx(), vis = new Set(cols); let h = "", grp = null;
+  S.D.metrics.forEach(m => {
+    if (m.group !== grp) { grp = m.group; h += `<tr class="grp"><td colspan="${S.D.models.length + 1}">${grp}</td></tr>`; }
+    const row = get(m.key), r = ranks(row, m.dir, cols);
+    h += `<tr class="clickable ${m.key === S.metric ? "hl" : ""}" data-k="${m.key}"><td class="name">${m.label}<span class="dirmark">${m.dir > 0 ? "↑" : "↓"}</span></td>` +
+      row.map((v, j) => `<td class="${r[j] ? "b" + r[j] : ""} ${j === 0 ? "oc" : ""} ${vis.has(j) ? "" : "off"}">${f3(v)}</td>`).join("") + "</tr>";
+  });
+  return h;
+}
+function bindRows(sel) {
+  document.querySelectorAll(sel + " tr.clickable").forEach(tr => tr.onclick = () => {
+    S.metric = tr.dataset.k; $("#metric").value = S.metric;
+    if (S.mode === "core" || S.mode === "idx") { S.mode = "best"; $("#mode").value = "best"; }
+    refresh(false);
+  });
+}
+function aggTable() {
+  const vis = new Set(visIdx());
+  $("#aggTitle").textContent = `평균 · ${S.D.label}${S.diff !== "all" ? " · " + S.diff : ""}`;
+  $("#aggSub").textContent = `${S.D.samples.filter(s => S.diff === "all" || s.diff === S.diff).length}개 샘플`;
+  $("#aggHead").innerHTML = "<tr><th>지표</th>" + S.D.models.map((m, j) =>
+    `<th class="${j === 0 ? "ours" : ""} ${vis.has(j) ? "" : "off"}">${m.label}</th>`).join("") + "</tr>";
+  $("#aggBody").innerHTML = rowsHtml(k => S.D.agg[k][S.diff] || S.D.agg[k].all);
+  bindRows("#aggBody");
+}
+function info() {
+  const s = S.D.samples.find(x => x.i === S.cur); if (!s) return;
+  const pos = S.order.findIndex(x => x.s.i === s.i);
+  $("#info").innerHTML = `<dt>번호</dt><dd>${s.i}${s.diff ? ` <span class="diff">${s.diff}</span>` : ""}</dd>` +
+    `<dt>랭킹</dt><dd>${pos >= 0 ? pos + 1 + " / " + S.order.length : "필터 밖"}</dd>` +
+    s.place.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("") +
+    `<dt>BL 창</dt><dd>f${s.first}–${s.last} (79f)</dd><dt>우리 창</dt><dd>f${s.start}–${s.start + s.nf - 1} (${s.nf}f)</dd>`;
+  $("#goalBase").src = `cmpgoal/${s.src || S.D.bench}/${s.vi ?? s.i}_base.png`;
+  $("#goalBaseCap").textContent = `베이스라인 goal = GT f${s.last}`;
+  $("#goalOurs").hidden = s.goal == null || s.goal === s.last;
+  $("#goalOursCap").hidden = $("#goalOurs").hidden;
+  if (!$("#goalOurs").hidden) { $("#goalOurs").src = `cmpgoal/${s.src || S.D.bench}/${s.vi ?? s.i}_ours.png`; $("#goalOursCap").textContent = `우리 goal = GT f${s.goal}`; }
+}
+
+// ---------- state
+function select(i) {
+  S.cur = i; location.hash = `${S.bench.replace(/_/g, "-")}-ck${S.ck}-s${i}`;
+  buildGrid(); sampleTable(); info(); markRank();
+}
+function refresh(rebuildGrid) {
+  buildOrder(); chips(); sampleTable(); aggTable(); info();
+  if (rebuildGrid) buildGrid();
+}
+function step(d) {
+  if (!S.order.length) return;
+  let p = S.order.findIndex(x => x.s.i === S.cur);
+  p = p < 0 ? 0 : Math.max(0, Math.min(S.order.length - 1, p + d));
+  select(S.order[p].s.i);
+}
+
+async function loadBench(bench, ck, sample) {
+  S.bench = bench; const b = S.benches.find(x => x.id === bench);
+  $("#bench").value = bench;
+  $("#ck").innerHTML = b.ckpts.map(c => `<option value="${c}">ck${c}${c === b.best ? " ★" : ""}</option>`).join("");
+  S.ck = ck && b.ckpts.includes(ck) ? ck : b.best; $("#ck").value = S.ck;
+  $("#app").hidden = false; $("#app").textContent = "데이터를 불러오는 중…";
+  const r = await fetch(`api/cmp/data?bench=${bench}&ck=${S.ck}`);
+  if (!r.ok) { $("#app").textContent = "불러오기 실패: " + (await r.text()); return; }
+  S.D = await r.json();
+  $("#app").hidden = true; $("#content").hidden = false;
+  S.hidden = new Set(store.get("cmp_hidden", []));
+  $("#sub").textContent = `${S.D.label} · Ours = goalprog_mode_real6_nomr_hg0_grad0.5 ck${S.ck} (★ = 핵심 지표 평균 순위 1위 ckpt) · 베이스라인 7종`;
+  // difficulty
+  $("#diffCtl").hidden = S.D.groups.length < 2;
+  $("#diffCtl .lab").textContent = S.D.bench === "lookout_abc" ? "세트" : "난이도";
+  if (!S.D.groups.includes(S.diff)) S.diff = "all";
+  $("#diffSeg").innerHTML = S.D.groups.map(g => `<button type="button" data-g="${g}" aria-pressed="${g === S.diff}">${g === "all" ? "전체" : g}</button>`).join("");
+  $("#diffSeg").querySelectorAll("button").forEach(bt => bt.onclick = () => {
+    S.diff = bt.dataset.g; $("#diffSeg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === bt));
+    refresh(false); if (S.order.length && !S.order.some(x => x.s.i === S.cur)) select(S.order[0].s.i);
+  });
+  $("#metric").innerHTML = S.D.metrics.map(m => `<option value="${m.key}">${m.label} ${m.dir > 0 ? "↑" : "↓"}</option>`).join("");
+  $("#metric").value = S.metric;
+  $("#mchips").innerHTML = S.D.models.slice(1).map(m => `<button type="button" data-id="${m.id}" aria-pressed="${!S.hidden.has(m.id)}">${m.label}</button>`).join("");
+  $("#mchips").querySelectorAll("button").forEach(bt => bt.onclick = () => {
+    const id = bt.dataset.id; S.hidden.has(id) ? S.hidden.delete(id) : S.hidden.add(id);
+    bt.setAttribute("aria-pressed", !S.hidden.has(id)); store.set("cmp_hidden", [...S.hidden]); refresh(true);
+  });
+  const missing = S.D.missing.length ? ` 매칭 안 된 샘플: ${S.D.missing.join(", ")}.` : "";
+  $("#note").textContent = "지표 주의: 베이스라인 값은 HF 데이터에 들어 있는 suite 결과(79프레임, goal = 마지막 GT 프레임)이고, 우리 값은 우리 평가 결과(77프레임, goal = start+81)예요. "
+    + "정의는 같은 계열(DA3 cam vs GT = rgbcam_*, Action vs GT = faith_*, Coherence = coh_*)이지만 같은 코드로 같은 창에서 잰 값은 아니라서, 작은 차이는 그대로 믿지 말고 영상으로 확인하세요. "
+    + "Goal image LPIPS/DINO는 베이스라인이 goal 프레임을 마지막 프레임으로 입력받아 거의 그대로 내놓기 때문에 우리에게 불리해요(우리 goal은 창 밖 f+81). MEt3R도 우리 값이 모든 베이스라인보다 3~4배 커서 계산 방식이 다를 가능성이 있어요. 그래서 둘 다 종합 순위에서 뺐어요. "
+    + "Wan 계열 3종은 action 출력이 없어서 Action/Coherence/Goal(action) 지표가 비어 있어요." + missing;
+  buildOrder();
+  const start = sample != null && S.D.samples.some(s => s.i === sample) ? sample : (S.order[0] ? S.order[0].s.i : 0);
+  aggTable(); select(start);
+}
+
+async function init() {
+  $("#colSeg").innerHTML = [3, 4, 5].map(c => `<button type="button" data-c="${c}" aria-pressed="${c === S.cols}">${c}</button>`).join("");
+  $("#colSeg").querySelectorAll("button").forEach(bt => bt.onclick = () => {
+    S.cols = +bt.dataset.c; $("#colSeg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === bt));
+    $("#grid").style.setProperty("--cols", S.cols); store.set("cmp_cols", S.cols);
+  });
+  S.cols = store.get("cmp_cols", 3);
+  $("#colSeg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", +x.dataset.c === S.cols));
+  S.benches = await (await fetch("api/cmp/benches")).json();
+  $("#bench").innerHTML = S.benches.map(b => `<option value="${b.id}" ${b.ckpts.length ? "" : "disabled"}>${b.label}</option>`).join("");
+  $("#bench").onchange = () => loadBench($("#bench").value);
+  $("#ck").onchange = () => loadBench(S.bench, +$("#ck").value, S.cur);
+  $("#metric").onchange = () => { S.metric = $("#metric").value; if (S.mode === "core" || S.mode === "idx") { S.mode = "best"; $("#mode").value = "best"; } refresh(false); select(S.order[0] ? S.order[0].s.i : S.cur); };
+  $("#mode").onchange = () => { S.mode = $("#mode").value; refresh(false); select(S.order[0] ? S.order[0].s.i : S.cur); };
+  $("#winOnly").onchange = () => { S.winOnly = $("#winOnly").checked; refresh(false); if (S.order.length && !S.order.some(x => x.s.i === S.cur)) select(S.order[0].s.i); };
+  $("#play").onclick = () => S.playing ? stop() : playAll();
+  $("#rate").onchange = () => { if (S.playing) playAll(); };
+  $("#prev").onclick = () => step(-1); $("#next").onclick = () => step(1);
+  $("#scrub").oninput = () => { stop(); seekFrame(+$("#scrub").value); };
+  document.addEventListener("keydown", e => {
+    if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName) && e.target.type !== "range") return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); step(1); }
+    else if (e.key === " ") { e.preventDefault(); S.playing ? stop() : playAll(); }
+    else if (e.key === ",") { stop(); seekFrame(frameOf() - 1); }
+    else if (e.key === ".") { stop(); seekFrame(frameOf() + 1); }
+  });
+  const h = location.hash.match(/^#([a-z0-9-]+)-ck(\d+)-s(\d+)(?:-f(\d+))?$/);
+  const hb = h && S.benches.find(b => b.id === h[1].replace(/-/g, "_"));
+  if (h && h[4] != null) S.pendingFrame = +h[4];   // #...-f<k>: open at frame k (cherry-pick page links)
+  if (hb) await loadBench(hb.id, +h[2], +h[3]);
+  else await loadBench(S.benches.find(b => b.ckpts.length).id);
+}
+init();
+</script>
+</body>
+</html>

@@ -70,12 +70,13 @@ def compare(src_disp, ref_depth, mask, scope="window"):
     r = ref_depth
     sel = mask & np.isfinite(d) & (r > 1e-3)
     if sel.sum() < 64:
-        return dict(absrel=np.nan, delta1=np.nan, logl1=np.nan, si_l1=si_l1,
+        return dict(absrel=np.nan, delta1=np.nan, delta15=np.nan, logl1=np.nan, si_l1=si_l1,
                     clamp_frac=float((clamped & mask).sum() / max(mask.sum(), 1)))
     dd, rr = d[sel], r[sel]
     ratio = np.maximum(dd / rr, rr / dd)
     return dict(absrel=float(np.mean(np.abs(dd - rr) / rr)),
                 delta1=float(np.mean(ratio < 1.25)),
+                delta15=float(np.mean(ratio < 1.5)),    # extended suite: delta < 1.5
                 logl1=float(np.mean(np.abs(np.log(dd) - np.log(rr)))),
                 si_l1=si_l1,
                 clamp_frac=float((clamped & mask).sum() / max(mask.sum(), 1)))
@@ -95,6 +96,9 @@ def main():
     ap.add_argument("--mac_root", default="", help="prefix for pod paths when run off-pod")
     ap.add_argument("--out_csv", default="depth_vs_da3_metrics.csv")
     ap.add_argument("--only", default="", help="comma-separated subset of F,A,B,C")
+    ap.add_argument("--no_gt_depth", action="store_true",
+                    help="data without GT depth (LookOut): compute column C only, mask = valid DA3 "
+                         "depth (no GT sky mask, so sky is kept wherever DA3 gives it a finite depth)")
     a = ap.parse_args()
 
     D = a.results_dir
@@ -117,16 +121,16 @@ def main():
             pred = np.stack([dec(pred[i], W) for i in range(K)])
 
         gt = []
-        ok = True
-        for k in range(K):
+        ok = not a.no_gt_depth
+        for k in range(K if ok else 0):
             f = st + a.vae_stride * k
             gp = os.path.join(sd, a.depth_subdir, f"{f:06d}.npy")
             if not os.path.exists(gp):
                 ok = False; break
             gt.append(dec(np.load(gp).astype(np.float64), W))
-        if not ok:
+        if not ok and not a.no_gt_depth:
             skipped.append(f"{tag}: missing GT depth"); continue
-        gt = np.stack(gt)
+        gt = np.stack(gt) if ok else None
 
         def load_da3(name):
             p = os.path.join(D, a.da3_subdir, f"{tag}{name}")
@@ -141,7 +145,9 @@ def main():
         da3g = load_da3(a.da3_gt_depth_name)
 
         # ONE shared mask for every column present. GT sky is exactly 1000.0 -> g<FAR drops it.
-        m = (gt > 0) & (gt < FAR)
+        m = (gt > 0) & (gt < FAR) if gt is not None else np.ones(pred.shape, bool)
+        if gt is None and da3 is not None:
+            m = m & (da3 < FAR)
         for extra in (da3, da3g):
             if extra is not None:
                 m = m & np.isfinite(extra) & (extra > 1e-3)
@@ -155,13 +161,13 @@ def main():
             for k2, v2 in r.items():
                 row[f"{pfx}_{k2}"] = v2
 
-        if "B" in want:
+        if "B" in want and gt is not None:
             put("B", pred, gt)
             # window-minus-frame: the same quantity the training logs as depth_affine_gap
             row["B_si_l1_frame"] = compare(pred, gt, m, scope="frame")["si_l1"]
-        if "A" in want and da3 is not None:
+        if "A" in want and da3 is not None and gt is not None:
             put("A", 1.0 / np.clip(da3, 1e-3, None), gt)
-        if "F" in want and da3g is not None:
+        if "F" in want and da3g is not None and gt is not None:
             put("F", 1.0 / np.clip(da3g, 1e-3, None), gt)
         if "C" in want and da3 is not None:
             # affine is solved pred<->DA3 directly: the sim3 scale already baked into da3 is

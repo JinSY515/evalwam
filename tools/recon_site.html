@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Valbench Recon Viewer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: toolbar band on top, the WebGL scene fills the rest; nothing floats over the point clouds. */
+:root {
+  color-scheme: dark;
+  --bg: #0e1013; --panel: rgba(20, 23, 28, 0.86); --band: #14171c; --line: #2a2f37;
+  --fg: #e6e8eb; --muted: #8b929c; --accent: #f2b84b;
+  --gt: #4ea1ff; --pred: #ff5a5a; --da3: #6fdc8c; --bad: #ff7a59; --good: #6fdc8c;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px var(--sans); overflow: hidden; display: flex; flex-direction: column; }
+#view { position: relative; flex: 1 1 auto; min-height: 0; }
+#view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.hud {
+  flex: none; position: relative; z-index: 2; background: var(--band); border-bottom: 1px solid var(--line);
+  padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; justify-content: space-between; max-height: 45vh; overflow-y: auto;
+}
+.title { display: grid; gap: 4px; min-width: 0; }
+.title h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .01em; overflow-wrap: anywhere; }
+.meta { font-family: var(--mono); font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 11px var(--mono); padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.chip.ok { color: var(--good); border-color: var(--good); } .chip.no { color: var(--bad); border-color: var(--bad); }
+.controls { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+button.seg, select {
+  font: 500 12px var(--mono); color: var(--fg); background: transparent; border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 9px; cursor: pointer;
+}
+select { background: var(--bg); max-width: 100%; }
+button.seg[aria-pressed="true"] { background: var(--accent); color: #17130a; border-color: var(--accent); }
+button.seg:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type=range] { width: 100px; accent-color: var(--accent); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+.ptag { position: absolute; z-index: 1; pointer-events: none; font: 600 12px var(--mono); letter-spacing: .06em;
+  color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
+.ptag small { font-weight: 400; color: var(--muted); letter-spacing: 0; margin-left: 6px; }
+.divider { position: absolute; z-index: 1; background: var(--line); pointer-events: none; }
+#loading { position: absolute; z-index: 1; inset: 0; display: grid; place-items: center; font: 500 13px var(--mono); color: var(--muted); pointer-events: none; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="hud">
+  <div class="title">
+    <h1 id="seq">loading…</h1>
+    <div class="meta" id="meta"></div>
+    <div class="chips" id="chips"></div>
+  </div>
+  <div class="controls">
+    <div class="row">
+      <label class="lbl" for="pick">Sample</label>
+      <button class="seg" id="prev" title="previous sample (←)">◀</button>
+      <select id="pick"></select>
+      <button class="seg" id="next" title="next sample (→)">▶</button>
+    </div>
+    <div class="row" role="group" aria-label="Layout">
+      <span class="lbl">Layout</span>
+      <button class="seg" id="l-one" aria-pressed="false">One</button>
+      <button class="seg" id="l-three" aria-pressed="true">Three</button>
+    </div>
+    <div class="row" role="group" aria-label="Point cloud" id="cloudrow" hidden>
+      <span class="lbl">Cloud</span>
+      <button class="seg" id="b-PRED" aria-pressed="true">PRED</button>
+      <button class="seg" id="b-DA3" aria-pressed="false">DA3</button>
+      <button class="seg" id="b-GT" aria-pressed="false">GT</button>
+    </div>
+    <div class="row">
+      <span class="lbl">View</span>
+      <button class="seg" id="v-orbit">Oblique</button>
+      <button class="seg" id="v-ego">Ego</button>
+      <button class="seg" id="v-bev">Top</button>
+      <button class="seg" id="b-traj" aria-pressed="true">Paths</button>
+    </div>
+    <div class="row">
+      <label class="lbl" for="clip">Depth</label>
+      <input type="range" id="clip" min="2" max="40" step="0.5" value="15">
+      <span class="meta" id="clipv"></span>
+    </div>
+    <div class="row">
+      <label class="lbl" for="psize">Size</label>
+      <input type="range" id="psize" min="0.02" max="0.25" step="0.01" value="0.09">
+      <span class="meta" id="npts"></span>
+    </div>
+    <div class="legend">
+      <span style="--c: var(--gt)">GT path</span>
+      <span style="--c: var(--pred)">model path (raymap)</span>
+      <span style="--c: var(--da3)">DA3 path</span>
+      <span style="--c: var(--accent)">goal</span>
+    </div>
+  </div>
+</div>
+
+<div id="view">
+  <div class="ptag" id="t-PRED">PRED<small>model depth + raymap cams</small></div>
+  <div class="ptag" id="t-DA3">DA3<small>on generated video</small></div>
+  <div class="ptag" id="t-GT">GT<small>CARLA</small></div>
+  <div class="divider" id="d1"></div>
+  <div class="divider" id="d2"></div>
+  <div id="loading">loading…</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const view = $("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+view.prepend(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(css("--bg"));
+const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 2000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+const grid = new THREE.GridHelper(80, 40, 0x3a404a, 0x23272e);
+grid.material.transparent = true; grid.material.opacity = 0.55; scene.add(grid);
+const paths = new THREE.Group(); scene.add(paths);
+const trajColor = { GT: css("--gt"), PRED: css("--pred"), DA3: css("--da3") };
+const ORDER = ["PRED", "DA3", "GT"];
+
+let INDEX = null, cur = -1, clouds = {}, active = "PRED", layout = "three", psize = 0.09, frame = null, loadSeq = 0;
+
+function parse(buf) {                                  // recon_web.pack: uint32 n | JSON[n] | arrays (offsets from end of JSON)
+  const n = new DataView(buf).getUint32(0, true);
+  const head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n)));
+  const base = 4 + n, out = {};
+  for (const [k, c] of Object.entries(head.clouds)) {
+    out[k] = { n: c.n, pos: new Int16Array(buf, base + c.pos, c.n * 3),
+               col: new Uint8Array(buf, base + c.col, c.n * 3), dep: new Uint8Array(buf, base + c.dep, c.n) };
+  }
+  return { head, data: out };
+}
+function clearScene() {
+  for (const c of Object.values(clouds)) { scene.remove(c.pts); c.pts.geometry.dispose(); c.pts.material.dispose(); }
+  clouds = {};
+  for (const o of [...paths.children]) { paths.remove(o); o.geometry.dispose(); o.material.dispose(); }
+}
+function buildScene(head, data) {
+  clearScene();
+  let ground = 0;
+  for (const [k, c] of Object.entries(data)) {
+    const pos = new Float32Array(c.pos.length);
+    for (let i = 0; i < pos.length; i++) pos[i] = c.pos[i] / 100;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(new Uint8Array(c.col), 3, true));
+    const pts = new THREE.Points(g, new THREE.PointsMaterial({ size: psize, vertexColors: true, sizeAttenuation: true }));
+    scene.add(pts); clouds[k] = { pts, n: c.n, dep: new Uint8Array(c.dep), shown: c.n };
+    if (k === "GT") { const ys = []; for (let i = 1; i < pos.length; i += 21) ys.push(pos[i]); ys.sort((a, b) => a - b); ground = ys[Math.floor(ys.length * 0.05)] || 0; }
+  }
+  grid.position.y = ground - 0.02;
+  for (const [k, T] of Object.entries(head.traj)) {
+    paths.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(T.map(p => new THREE.Vector3(...p))),
+                             new THREE.LineBasicMaterial({ color: trajColor[k] })));
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshBasicMaterial({ color: trajColor[k] }));
+    s.position.set(...T[0]); paths.add(s);
+  }
+  const goal = new THREE.Mesh(new THREE.OctahedronGeometry(0.3), new THREE.MeshBasicMaterial({ color: css("--accent") }));
+  goal.position.set(...head.goal_pt); paths.add(goal);
+  const g0 = new THREE.Vector3(...head.traj.GT[0]), gN = new THREE.Vector3(...head.traj.GT[head.traj.GT.length - 1]);
+  const fwd = gN.clone().sub(g0).setY(0); if (fwd.length() < 1e-3) fwd.set(1, 0, 0); fwd.normalize();
+  frame = { g0, mid: g0.clone().lerp(gN, 0.5), fwd };
+  $("clip").max = head.max_depth;
+}
+function setView(kind) {
+  if (!frame) return; const { g0, mid, fwd } = frame;
+  if (kind === "bev") { camera.position.set(mid.x + 0.01, mid.y + 32, mid.z); controls.target.copy(mid); }
+  else if (kind === "ego") { camera.position.copy(g0.clone().addScaledVector(fwd, -3).add(new THREE.Vector3(0, 1.6, 0))); controls.target.copy(g0.clone().addScaledVector(fwd, 8)); }
+  else { const side = new THREE.Vector3(-fwd.z, 0, fwd.x); camera.position.copy(mid.clone().addScaledVector(fwd, -14).addScaledVector(side, 10).add(new THREE.Vector3(0, 13, 0))); controls.target.copy(mid.clone().addScaledVector(fwd, 4)); }
+  controls.update();
+}
+function count() {
+  if (!clouds.PRED) return;
+  $("npts").textContent = layout === "three" ? ORDER.filter(k => clouds[k]).map(k => k + " " + Math.round(clouds[k].shown / 1000) + "k").join(" · ")
+                                             : clouds[active].shown.toLocaleString() + " pts";
+}
+function setClip(m) {
+  const lim = Math.round(m / 0.2);
+  for (const c of Object.values(clouds)) {           // points are depth-sorted: the clip is a draw range
+    let lo = 0, hi = c.dep.length;
+    while (lo < hi) { const md = (lo + hi) >> 1; if (c.dep[md] <= lim) lo = md + 1; else hi = md; }
+    c.shown = lo; c.pts.geometry.setDrawRange(0, lo);
+  }
+  $("clipv").textContent = "≤ " + (+m).toFixed(1) + " m"; count();
+}
+function rects() {
+  const W = view.clientWidth, H = view.clientHeight, ks = ORDER.filter(k => clouds[k] || !Object.keys(clouds).length), n = ks.length, wide = W >= 720;
+  return ks.map((k, i) => wide ? { k, x: Math.round(i * W / n), y: 0, w: Math.round(W / n), h: H } : { k, x: 0, y: Math.round(i * H / n), w: W, h: Math.round(H / n) });
+}
+function placeTags() {
+  const three = layout === "three", R = rects(), wide = view.clientWidth >= 720;
+  for (const k of ORDER) $("t-" + k).hidden = true;
+  for (const r of R) { const t = $("t-" + r.k); t.hidden = !three; t.style.left = (r.x + 10) + "px"; t.style.top = (r.y + 10) + "px"; }
+  ["d1", "d2"].forEach((id, i) => {
+    const d = $(id), r = R[i + 1]; d.hidden = !three || !r; if (!r) return;
+    Object.assign(d.style, wide ? { left: r.x + "px", top: "0px", width: "1px", height: "100%" } : { left: "0px", top: r.y + "px", width: "100%", height: "1px" });
+  });
+  $("cloudrow").hidden = three;
+  $("l-one").setAttribute("aria-pressed", String(!three)); $("l-three").setAttribute("aria-pressed", String(three));
+}
+function setLayout(l) { layout = l; placeTags(); count(); }
+function show(k) { active = k; for (const n of ORDER) $("b-" + n).setAttribute("aria-pressed", String(n === k)); count(); }
+
+function chips(s) {
+  const c = [];
+  if (s.goal_success != null) c.push(`<span class="chip ${s.goal_success >= 0.5 ? "ok" : "no"}">goal ${s.goal_success >= 0.5 ? "reached" : "missed"}</span>`);
+  if (s.act_roterr != null) c.push(`<span class="chip">action RotErr ${s.act_roterr.toFixed(1)}°</span>`);
+  if (s.coh_roterr != null) c.push(`<span class="chip">coherence RotErr ${s.coh_roterr.toFixed(1)}°</span>`);
+  $("chips").innerHTML = c.join("");
+}
+async function load(pos) {
+  if (!INDEX || pos < 0 || pos >= INDEX.samples.length) return;
+  cur = pos; const s = INDEX.samples[pos], my = ++loadSeq;
+  $("pick").value = String(pos); $("loading").hidden = false; $("loading").textContent = "loading sample " + s.i + "…";
+  try { location.hash = "s" + s.i; } catch (e) {}
+  $("seq").textContent = s.seq.replaceAll("/", "__");
+  chips(s);
+  try {
+    const r = await fetch("data/" + s.i + ".bin"); if (!r.ok) throw new Error("HTTP " + r.status);
+    const buf = await r.arrayBuffer(); if (my !== loadSeq) return;     // a newer pick won
+    const { head, data } = parse(buf);
+    const keep = !!frame; buildScene(head, data); if (!keep) setView("orbit"); else setView("orbit");
+    $("meta").textContent = `${INDEX.label} · sample ${head.sample} · ${s.diff} · frames ${head.start}–${head.start + 76} · goal ${head.goal} · 20 key frames · voxel ${Math.round(head.voxel * 100)} cm`;
+    setClip(+$("clip").value); placeTags(); count(); $("loading").hidden = true;
+  } catch (e) { $("loading").textContent = "could not load sample " + s.i + ": " + e.message; }
+}
+
+$("prev").onclick = () => load(cur - 1); $("next").onclick = () => load(cur + 1);
+$("pick").onchange = e => load(+e.target.value);
+window.addEventListener("keydown", e => { if (e.target.tagName === "SELECT") return; if (e.key === "ArrowLeft") load(cur - 1); if (e.key === "ArrowRight") load(cur + 1); });
+$("l-one").onclick = () => setLayout("one"); $("l-three").onclick = () => setLayout("three");
+for (const k of ORDER) $("b-" + k).onclick = () => show(k);
+$("v-orbit").onclick = () => setView("orbit"); $("v-ego").onclick = () => setView("ego"); $("v-bev").onclick = () => setView("bev");
+$("b-traj").onclick = () => { paths.visible = !paths.visible; $("b-traj").setAttribute("aria-pressed", String(paths.visible)); };
+$("clip").oninput = e => setClip(+e.target.value);
+$("psize").oninput = e => { psize = +e.target.value; for (const c of Object.values(clouds)) c.pts.material.size = psize; };
+
+function resize() { renderer.setSize(view.clientWidth, view.clientHeight, false); placeTags(); }
+window.addEventListener("resize", resize); resize();
+
+fetch("samples.json").then(r => r.json()).then(ix => {
+  INDEX = ix; $("clip").value = ix.clip || 15;
+  const groups = {};
+  ix.samples.forEach((s, p) => { (groups[s.diff] = groups[s.diff] || []).push([p, s]); });
+  for (const [d, list] of Object.entries(groups)) {
+    const og = document.createElement("optgroup"); og.label = d;
+    for (const [p, s] of list) { const o = document.createElement("option"); o.value = p; o.textContent = `${s.i} · ${s.seq.split("/").slice(1).join(" ")}`; og.appendChild(o); }
+    $("pick").appendChild(og);
+  }
+  const h = /^#s(\d+)$/.exec(location.hash); const want = h ? ix.samples.findIndex(s => s.i === +h[1]) : 0;
+  load(want >= 0 ? want : 0);
+}).catch(e => { $("loading").textContent = "samples.json missing: " + e.message; });
+
+(function loop() {
+  controls.update();
+  const W = view.clientWidth, H = view.clientHeight;
+  if (layout === "three") {
+    renderer.setScissorTest(true);
+    for (const r of rects()) {
+      for (const [n, c] of Object.entries(clouds)) c.pts.visible = n === r.k;
+      const yb = H - r.y - r.h;
+      renderer.setViewport(r.x, yb, r.w, r.h); renderer.setScissor(r.x, yb, r.w, r.h);
+      camera.aspect = r.w / r.h; camera.updateProjectionMatrix(); renderer.render(scene, camera);
+    }
+    renderer.setScissorTest(false);
+  } else {
+    for (const [n, c] of Object.entries(clouds)) c.pts.visible = n === active;
+    renderer.setViewport(0, 0, W, H); camera.aspect = W / H; camera.updateProjectionMatrix(); renderer.render(scene, camera);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

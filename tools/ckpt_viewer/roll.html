@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Long rollout 순위</title>
+<style>
+:root {
+  --bg: #f3f4f6; --panel: #ffffff; --fg: #1b2230; --muted: #5c6577; --line: #d9dde5;
+  --accent: #2f55c8; --accent-soft: #e4eafb;
+  --best: #1f9d55; --best-bg: #d7f2e1; --second: #a87800; --second-bg: #fbefc9; --neg: #c0392b; --neg-bg: #f9dedb;
+  --font-ui: "IBM Plex Sans", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #11151c; --panel: #181d26; --fg: #e3e7ee; --muted: #94a0b4; --line: #2a3140;
+  --accent: #7d9cff; --accent-soft: #232c45;
+  --best: #4cd38a; --best-bg: #163a28; --second: #f0c24b; --second-bg: #3d3214; --neg: #f87171; --neg-bg: #3d1c1c;
+  color-scheme: dark } }
+* { box-sizing: border-box }
+html, body { margin: 0 }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; line-height: 1.45 }
+.wrap { max-width: 1800px; margin: 0 auto; padding: 0 16px 48px }
+header.top { padding: 18px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline }
+h1 { font-size: 20px; font-weight: 600; margin: 0 }
+h2 { font-size: 15px; font-weight: 600; margin: 0 }
+.sub { color: var(--muted); font-size: 13px }
+a { color: var(--accent) }
+.bar { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); margin: 0 -16px; padding: 10px 16px }
+.bar-inner { max-width: 1800px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center }
+.ctl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap }
+.ctl > span.lab { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+select, button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer }
+button:hover, select:hover { border-color: var(--accent) }
+button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden }
+.seg button { border: 0; border-radius: 0; padding: 5px 10px }
+.seg button + button { border-left: 1px solid var(--line) }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff }
+.main { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; margin-top: 14px; align-items: start }
+@media (max-width: 1000px) { .main { grid-template-columns: minmax(0, 1fr) } .rank { position: static !important; max-height: 360px !important } }
+.rank { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; max-height: calc(100vh - 90px); position: sticky; top: 70px }
+.rank-head { padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted) }
+.rank-list { overflow-y: auto; flex: 1 }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums }
+.rank-list table { width: 100% }
+.rank-list td { padding: 5px 8px; border-bottom: 1px solid var(--line); font-size: 12.5px; white-space: nowrap }
+.rank-list td.nm { overflow: hidden; text-overflow: ellipsis; max-width: 170px }
+.rank-list td.num { text-align: right; font-family: var(--font-data); font-size: 12px }
+.rank-list tr { cursor: pointer }
+.rank-list tr:hover td { background: var(--accent-soft) }
+.rank-list tr.cur td { background: var(--accent-soft); color: var(--accent); font-weight: 600 }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px }
+.card-head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; margin-bottom: 8px }
+.badge { display: inline-block; font-family: var(--font-data); font-size: 12px; padding: 1px 7px; border-radius: 10px; background: var(--accent-soft); color: var(--accent) }
+video, img.fig { width: 100%; display: block; background: #000; border-radius: 4px }
+.pane-lab { font-size: 11px; color: var(--muted); display: grid; grid-template-columns: repeat(4, 1fr); text-align: center; margin-top: 3px }
+.two { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px }
+@media (max-width: 1200px) { .two { grid-template-columns: minmax(0, 1fr) } }
+.missing { color: var(--muted); font-size: 13px; padding: 30px 10px; text-align: center; border: 1px dashed var(--line); border-radius: 4px }
+.mt { width: 100% }
+.mt th, .mt td { padding: 4px 8px; border-bottom: 1px solid var(--line); font-size: 13px; text-align: right }
+.mt th:first-child, .mt td:first-child { text-align: left }
+.mt th { font-size: 11px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: .04em }
+.mt td.grp { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding-top: 10px; text-align: left }
+.mt td.v { font-family: var(--font-data) }
+.mt tr.click { cursor: pointer }
+.mt tr.click:hover td { background: var(--accent-soft) }
+.top10 { background: var(--best-bg); color: var(--best) }
+.top25 { background: var(--second-bg); color: var(--second) }
+.bot25 { background: var(--neg-bg); color: var(--neg) }
+.core-dot { color: var(--accent); font-size: 10px; margin-left: 4px }
+.kbd { font-family: var(--font-data); font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px }
+.empty { padding: 40px; text-align: center; color: var(--muted) }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 4px }
+.chip { font-size: 12.5px; padding: 3px 9px; border-radius: 12px; border: 1px solid var(--line); cursor: pointer; user-select: none }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff }
+.chip[aria-disabled="true"] { opacity: .45; cursor: default }
+.cmp-row { margin-bottom: 10px }
+.cmp-row .who { font-size: 12px; font-weight: 600; margin: 0 0 3px; display: flex; gap: 10px; align-items: baseline }
+.cmp-row .who .sub { font-weight: 400 }
+.grid-n { display: grid; gap: 10px }
+.mt td.win { background: var(--best-bg); color: var(--best); font-weight: 600 }
+.mt td.up { color: var(--best) } .mt td.dn { color: var(--neg) }
+.legend { font-size: 12px; color: var(--muted) }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Long rollout 순위</h1>
+    <span class="sub">clip별 GT | Rollout | Goal | Depth 영상 + 3D recon(orbit · BEV) · 순위 = 핵심 지표 순위의 평균(1 = 최고)</span>
+    <a class="sub" href="./">체크포인트 뷰어</a> <a class="sub" href="cmp">베이스라인 비교</a>
+  </header>
+  <div class="bar"><div class="bar-inner">
+    <div class="ctl"><span class="lab">세트</span><select id="set"></select></div>
+    <div class="ctl"><span class="lab">정렬</span><select id="sort"></select>
+      <div class="seg" id="ord"><button data-o="best" aria-pressed="true">좋은 순</button><button data-o="worst" aria-pressed="false">나쁜 순</button></div></div>
+    <div class="ctl"><span class="lab">재생 속도</span><div class="seg" id="rate">
+      <button data-r="0.5" aria-pressed="false">0.5×</button><button data-r="1" aria-pressed="true">1×</button><button data-r="2" aria-pressed="false">2×</button></div></div>
+    <div class="ctl"><span class="lab">비교</span><span class="chips" id="cmp"></span></div>
+    <div class="ctl" id="diffctl" hidden><span class="lab">순위 목록</span><div class="seg" id="diff">
+      <button data-d="0" aria-pressed="true">이 세트 값</button><button data-d="1" aria-pressed="false">비교 첫 세트 대비 개선</button></div></div>
+    <span class="sub" id="status"></span>
+    <span class="sub"><span class="kbd">↑</span>/<span class="kbd">↓</span> clip · <span class="kbd">space</span> 재생</span>
+  </div></div>
+  <div id="body"></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v } catch (e) { return d } },
+             set(k, v) { try { localStorage.setItem(k, v) } catch (e) {} } };
+let SETS = [], CMP = [], CD = {}, diffMode = ls.get("roll_diff", "0") === "1";
+let D = null, cur = null, sortKey = ls.get("roll_sort", "comp"), order = ls.get("roll_ord", "best"), rate = +ls.get("roll_rate", "1");
+const fmt = (v, k) => v == null ? "–" : v.toFixed(3);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function init() {
+  const sets = await (await fetch("api/roll/sets")).json(); SETS = sets;
+  try { CMP = JSON.parse(ls.get("roll_cmp", "[]")) } catch (e) { CMP = [] }
+  document.querySelectorAll("#diff button").forEach(b => { b.setAttribute("aria-pressed", (b.dataset.d === "1") === diffMode); b.onclick = () => {
+    diffMode = b.dataset.d === "1"; ls.set("roll_diff", diffMode ? "1" : "0");
+    document.querySelectorAll("#diff button").forEach(x => x.setAttribute("aria-pressed", x === b)); renderList() } });
+  const h = location.hash.slice(1).split("-j");
+  $("#set").innerHTML = sets.map(s => `<option value="${s.id}">${esc(s.label)}${s.ready ? "" : " (준비 중)"}</option>`).join("");
+  if (h[0] && sets.some(s => s.id === h[0])) $("#set").value = h[0];
+  $("#set").onchange = () => load(cur);
+  document.querySelectorAll("#ord button").forEach(b => { b.setAttribute("aria-pressed", b.dataset.o === order); b.onclick = () => {
+    order = b.dataset.o; ls.set("roll_ord", order); document.querySelectorAll("#ord button").forEach(x => x.setAttribute("aria-pressed", x === b)); renderList() } });
+  document.querySelectorAll("#rate button").forEach(b => { b.setAttribute("aria-pressed", +b.dataset.r === rate); b.onclick = () => {
+    rate = +b.dataset.r; ls.set("roll_rate", rate); document.querySelectorAll("#rate button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    document.querySelectorAll("video").forEach(v => v.playbackRate = rate) } });
+  await load(h[1] != null ? +h[1] : null);
+}
+
+async function load(j) {
+  const sid = $("#set").value;
+  D = await (await fetch("api/roll/data?set=" + sid)).json();
+  if (!D.ready) { $("#body").innerHTML = `<div class="empty">아직 준비 중이에요: ${esc(D.msg || "")}<br>파이프라인이 끝나면 새로고침하면 보여요.</div>`; $("#status").textContent = ""; return }
+  await loadCmp();
+  const ms = D.metrics;
+  $("#sort").innerHTML = `<option value="comp">종합 순위 (핵심 ${D.core.length}개 평균)</option>` +
+    ms.map(m => `<option value="${m.key}">${esc(m.label)}${m.core ? " ●" : ""}</option>`).join("");
+  if (![...$("#sort").options].some(o => o.value === sortKey)) sortKey = "comp";
+  $("#sort").value = sortKey;
+  $("#sort").onchange = () => { sortKey = $("#sort").value; ls.set("roll_sort", sortKey); renderList() };
+  $("#status").textContent = `${D.n} clips · viz ${D.nviz}/${D.n} · recon ${D.nrecon}/${D.n}` + (D.flat ? "" : " · suite 지표 없음");
+  $("#body").innerHTML = `<div class="main"><div class="rank"><div class="rank-head" id="rh"></div><div class="rank-list"><table id="rl"></table></div></div><div id="detail"></div></div>`;
+  const first = sorted()[0];
+  cur = (j != null && D.samples.some(s => s.j === j)) ? j : (first ? first.j : 0);
+  renderChips(); renderList(); renderDetail();
+}
+
+const short = id => (SETS.find(x => x.id === id) || {}).short || id;
+function renderChips() {
+  $("#cmp").innerHTML = SETS.filter(x => x.id !== D.id).map(x => `<span class="chip" role="button" tabindex="0" data-id="${x.id}" aria-pressed="${CMP.includes(x.id)}"` +
+    `${x.ready ? "" : ' aria-disabled="true" title="아직 준비 중"'}>${esc(x.short)}${x.ready ? "" : " (준비 중)"}</span>`).join("");
+  $("#cmp").querySelectorAll(".chip").forEach(c => { const t = async () => { if (c.getAttribute("aria-disabled") === "true") return;
+    const id = c.dataset.id; CMP = CMP.includes(id) ? CMP.filter(x => x !== id) : CMP.concat(id); ls.set("roll_cmp", JSON.stringify(CMP));
+    await loadCmp(); renderChips(); renderList(); renderDetail() };
+    c.onclick = t; c.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); t() } } });
+  $("#diffctl").hidden = !active().length;
+}
+const active = () => CMP.filter(id => id !== D.id && CD[id] && CD[id].ready);
+async function loadCmp() {
+  for (const id of CMP) if (id !== D.id && SETS.some(x => x.id === id && x.ready)) CD[id] = await (await fetch("api/roll/data?set=" + id)).json();
+}
+function twin(id, s) {   // same clip in another set: same index, verified by sequence name + start frame
+  const o = CD[id]; if (!o || !o.samples) return null;
+  const t = o.samples.find(x => x.j === s.j);
+  return t && t.name === s.name && t.start === s.start ? t : (o.samples.find(x => x.name === s.name && x.start === s.start) || null);
+}
+function val(s) {
+  if (diffMode && active().length) {
+    const t = twin(active()[0], s); if (!t) return null;
+    if (sortKey === "comp") { let w = 0, n = 0; for (const k of D.core) { const a = s.m[k], b = t.m[k]; if (a == null || b == null) continue;
+      const dir = D.metrics.find(m => m.key === k).dir; n++; w += Math.sign((a - b) * dir) } return n ? w / n : null }
+    const a = s.m[sortKey], b = t.m[sortKey]; return a == null || b == null ? null : a - b;
+  }
+  return sortKey === "comp" ? s.comp : s.m[sortKey] }
+function sorted() {
+  const dir = sortKey === "comp" ? (diffMode && active().length ? 1 : -1) : D.metrics.find(m => m.key === sortKey).dir;
+  const arr = D.samples.filter(s => val(s) != null).sort((a, b) => (val(b) - val(a)) * dir);
+  if (order === "worst") arr.reverse();
+  return arr.concat(D.samples.filter(s => val(s) == null));
+}
+function renderList() {
+  const arr = sorted(), dm = diffMode && active().length;
+  const lab = sortKey === "comp" ? (dm ? "핵심 지표 승률 (+1 = 전부 이김)" : "평균 순위") : D.metrics.find(m => m.key === sortKey).label + (dm ? " 차이" : "");
+  $("#rh").textContent = `${arr.length}개 · ${order === "best" ? "좋은 순" : "나쁜 순"} · 오른쪽 = ${lab}` + (dm ? ` (${short(D.id)} − ${short(active()[0])})` : "");
+  $("#rl").innerHTML = arr.map((s, i) => `<tr data-j="${s.j}" class="${s.j === cur ? "cur" : ""}"><td class="num">${s.rank ?? "–"}</td>` +
+    `<td class="nm" title="${esc(s.name)}">${esc(s.name)}</td><td class="num">${fmt(val(s))}</td></tr>`).join("");
+  $("#rl").querySelectorAll("tr").forEach(tr => tr.onclick = () => go(+tr.dataset.j));
+  const c = $("#rl tr.cur"); if (c) c.scrollIntoView({ block: "nearest" });
+}
+function go(j) { cur = j; renderList(); renderDetail() }
+
+function f(s, k) { return s.files[k] ? `rollf/${D.id}/${s.files[k]}` : null }
+function cls(r, n) { if (r == null) return ""; const q = (r - 1) / Math.max(n - 1, 1); return q <= .1 ? "top10" : q <= .25 ? "top25" : q >= .75 ? "bot25" : "" }
+document.addEventListener("click", async e => {
+  if (e.target.id !== "rsave") return;
+  const lab = $("#rsaved"), b = e.target; b.disabled = true; lab.textContent = "저장 중…";
+  try { const r = await (await fetch(`api/roll/export?set=${D.id}&j=${cur}`)).json(); lab.textContent = r.ok ? "저장됨 → " + r.dir : "저장 실패" }
+  catch (err) { lab.textContent = "저장 실패" }
+  b.disabled = false });
+function renderDetail() {
+  const s = D.samples.find(x => x.j === cur); if (!s) return;
+  history.replaceState(null, "", `#${D.id}-j${s.j}`);
+  const vg = f(s, "vs_gt"), raw = f(s, "raw"), orb = f(s, "orbit"), bev = f(s, "bev"), q = f(s, "quality");
+  const n = D.samples.length, A = active();
+  let rows = "", g0 = null;
+  for (const m of D.metrics) {
+    if (m.group !== g0) { rows += `<tr><td class="grp" colspan="4">${esc(m.group)}</td></tr>`; g0 = m.group }
+    const r = s.r[m.key], cnt = D.samples.filter(x => x.m[m.key] != null).length;
+    rows += `<tr class="click" data-k="${m.key}"><td>${esc(m.label)} ${m.dir > 0 ? "↑" : "↓"}${m.core ? '<span class="core-dot" title="종합 순위에 포함">●</span>' : ""}</td>` +
+      `<td class="v ${cls(r, cnt)}">${fmt(s.m[m.key])}</td><td class="v">${r == null ? "–" : (Number.isInteger(r) ? r : r.toFixed(1)) + "/" + cnt}</td><td class="v">${fmt(D.mean[m.key])}</td></tr>`;
+  }
+  $("#detail").innerHTML = `
+  <div class="card"><div class="card-head"><h2>${esc(s.name)}</h2>
+    <span class="badge">종합 ${s.rank ?? "–"}/${n}</span><span class="sub">평균 순위 ${fmt(s.comp)} (핵심 ${s.ncore}개)</span>
+    <span class="sub">start f${s.start} · ${s.nf} frames · ${s.chunks} chunks · goals ${(s.goals || []).join(", ")}</span>
+    ${raw ? `<a class="sub" href="${raw}" target="_blank">원본 rollout mp4</a>` : ""}
+    <button type="button" id="rsave">저장</button><span class="sub" id="rsaved"></span></div>
+    ${A.length ? cmpVideos(s) : (vg ? `<video id="v0" src="${vg}" controls loop muted playsinline autoplay></video><div class="pane-lab"><span>GT</span><span>Rollout</span><span>Goal</span><span>Depth</span></div>`
+         : `<div class="missing">GT | Rollout | Goal | Depth 영상이 아직 없어요 (viz 진행 중)</div>`)}
+  </div>
+  ${A.length ? cmpCard(s) : ""}
+  ${A.length ? growCmp(s) : `<div class="card"><div class="card-head"><h2>3D recon · 프레임 따라 확장</h2><span class="sub">왼쪽 GT | 생성 프레임, 가운데 GT 깊이 + GT 포즈, 오른쪽 예측 깊이 + 예측 포즈 · 노랑 = 지나온 경로, 빨강 = 현재 카메라</span></div>
+    ${f(s, "grow") ? `<video src="${f(s, "grow")}" controls loop muted playsinline autoplay></video>` : `<div class="missing">확장 영상이 아직 없어요 (만드는 중)</div>`}</div>`}
+  <div class="two">
+    <div class="card"><div class="card-head"><h2>3D recon · orbit</h2><span class="sub">GT 깊이 + GT 포즈 vs 예측 깊이 + 예측 포즈</span></div>
+      ${orb ? `<video src="${orb}" controls loop muted playsinline autoplay></video>` : `<div class="missing">orbit 영상이 아직 없어요 (recon 진행 중)</div>`}</div>
+    <div class="card"><div class="card-head"><h2>3D recon · BEV</h2></div>
+      ${bev ? `<a href="${bev}" target="_blank"><img class="fig" src="${bev}" alt="BEV ${esc(s.name)}"></a>` : `<div class="missing">BEV가 아직 없어요</div>`}</div>
+  </div>
+  <div class="two">
+    <div class="card"><div class="card-head"><h2>지표</h2><span class="sub">순위 = 이 세트 ${n}개 중 · 초록 상위 10% · 노랑 상위 25% · 빨강 하위 25% · 행 클릭 = 그 지표로 정렬</span></div>
+      <table class="mt"><thead><tr><th>지표</th><th>이 clip</th><th>순위</th><th>세트 평균</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="card"><div class="card-head"><h2>프레임별 PSNR / LPIPS</h2></div>
+      ${q ? `<a href="${q}" target="_blank"><img class="fig" src="${q}" alt="quality ${esc(s.name)}"></a>` : `<div class="missing">아직 없어요</div>`}</div>
+  </div>`;
+  document.querySelectorAll("#detail video").forEach(v => { v.playbackRate = rate; v.addEventListener("loadedmetadata", () => v.playbackRate = rate) });
+  syncVideos();
+  document.querySelectorAll("#detail tr.click").forEach(tr => tr.onclick = () => { sortKey = tr.dataset.k; $("#sort").value = sortKey; ls.set("roll_sort", sortKey); renderList() });
+}
+
+function cmpVideos(s) {
+  const L = [[D.id, s]].concat(active().map(id => [id, twin(id, s)]));
+  return `<div class="legend" style="margin-bottom:6px">같은 clip · 같은 goal 프레임 · 위아래 동기 재생 (맨 위 영상 기준) · 각 줄 = GT | Rollout | Goal | Depth</div>` +
+    L.map(([id, t], i) => { const p = t && t.files.vs_gt ? `rollf/${id}/${t.files.vs_gt}` : null;
+      return `<div class="cmp-row"><div class="who">${esc(short(id))}<span class="sub">${t ? `종합 ${t.rank ?? "–"}/${(i ? CD[id] : D).samples.length}` : "이 clip 없음"}</span></div>` +
+        (p ? `<video class="sync${i ? "" : " master"}" src="${p}" ${i ? "" : "controls "}loop muted playsinline${i ? "" : " autoplay"}></video>`
+           : `<div class="missing">vs_gt 영상이 아직 없어요 (viz 진행 중)</div>`) + `</div>` }).join("") +
+    `<div class="pane-lab"><span>GT</span><span>Rollout</span><span>Goal</span><span>Depth</span></div>`;
+}
+function cmpCard(s) {
+  const ids = [D.id].concat(active()), T = ids.map((id, i) => i ? twin(id, s) : s), M = ids.map((id, i) => (i ? CD[id] : D).mean);
+  const hd = `<tr><th>지표</th>${ids.map(id => `<th>${esc(short(id))}</th>`).join("")}<th>Δ ${esc(short(ids[0]))} − ${esc(short(ids[1]))}</th></tr>`;
+  const body = (get) => { let r = "", g0 = null;
+    for (const m of D.metrics) {
+      if (m.group !== g0) { r += `<tr><td class="grp" colspan="${ids.length + 2}">${esc(m.group)}</td></tr>`; g0 = m.group }
+      const v = get(m.key), ok = v.filter(x => x != null), best = ok.length > 1 ? (m.dir > 0 ? Math.max(...ok) : Math.min(...ok)) : null;
+      const d = v[0] != null && v[1] != null ? v[0] - v[1] : null, good = d == null || d === 0 ? "" : (d * m.dir > 0 ? "up" : "dn");
+      r += `<tr><td>${esc(m.label)} ${m.dir > 0 ? "↑" : "↓"}</td>` + v.map(x => `<td class="v${x != null && x === best ? " win" : ""}">${fmt(x)}</td>`).join("") +
+        `<td class="v ${good}">${d == null ? "–" : (d > 0 ? "+" : "") + fmt(d)}</td></tr>` }
+    return r };
+  const orb = ids.map((id, i) => T[i] && T[i].files.orbit ? `rollf/${id}/${T[i].files.orbit}` : null);
+  const bev = ids.map((id, i) => T[i] && T[i].files.bev ? `rollf/${id}/${T[i].files.bev}` : null);
+  const cols = `grid-template-columns: repeat(${ids.length}, minmax(0, 1fr))`;
+  return `<div class="two">
+    <div class="card"><div class="card-head"><h2>체크포인트 비교 · 이 clip</h2><span class="sub">초록 = 가장 좋음 · Δ 초록 = ${esc(short(ids[0]))}가 더 좋음</span></div>
+      <table class="mt"><thead>${hd}</thead><tbody>${body(k => T.map(t => t ? t.m[k] ?? null : null))}</tbody></table></div>
+    <div class="card"><div class="card-head"><h2>체크포인트 비교 · 세트 평균 (62 clip)</h2></div>
+      <table class="mt"><thead>${hd}</thead><tbody>${body(k => M.map(x => x[k] ?? null))}</tbody></table></div>
+  </div>
+  <div class="card"><div class="card-head"><h2>3D recon · orbit 비교</h2></div><div class="grid-n" style="${cols}">
+    ${ids.map((id, i) => `<div><div class="who" style="font-size:12px;font-weight:600;margin-bottom:3px">${esc(short(id))}</div>` +
+      (orb[i] ? `<video src="${orb[i]}" controls loop muted playsinline autoplay></video>` : `<div class="missing">아직 없어요</div>`) + `</div>`).join("")}</div></div>
+  <div class="card"><div class="card-head"><h2>3D recon · BEV 비교</h2></div><div class="grid-n" style="${cols}">
+    ${ids.map((id, i) => `<div><div class="who" style="font-size:12px;font-weight:600;margin-bottom:3px">${esc(short(id))}</div>` +
+      (bev[i] ? `<a href="${bev[i]}" target="_blank"><img class="fig" src="${bev[i]}" alt="BEV ${esc(short(id))}"></a>` : `<div class="missing">아직 없어요</div>`) + `</div>`).join("")}</div></div>`;
+}
+function growCmp(s) {
+  const ids = [D.id].concat(active()), T = ids.map((id, i) => i ? twin(id, s) : s);
+  return `<div class="card"><div class="card-head"><h2>3D recon · 프레임 따라 확장 · 체크포인트 비교</h2><span class="sub">각 줄 = GT | 생성 프레임 · GT 깊이+GT 포즈 · 예측 깊이+예측 포즈 · 노랑 = 지나온 경로, 빨강 = 현재 카메라 · 맨 위 기준 동기 재생</span></div>` +
+    ids.map((id, i) => { const p = T[i] && T[i].files.grow ? `rollf/${id}/${T[i].files.grow}` : null;
+      return `<div class="cmp-row"><div class="who">${esc(short(id))}</div>` +
+        (p ? `<video class="gsync${i ? "" : " gmaster"}" src="${p}" ${i ? "" : "controls "}loop muted playsinline${i ? "" : " autoplay"}></video>` : `<div class="missing">확장 영상이 아직 없어요 (만드는 중)</div>`) + `</div>` }).join("") + `</div>`;
+}
+function syncVideos() {
+  syncPair("#detail video.gmaster", "#detail video.gsync:not(.gmaster)");
+  syncPair("#detail video.master", "#detail video.sync:not(.master)");
+}
+function syncPair(ms, os) {
+  const m = document.querySelector(ms); if (!m) return;
+  const others = [...document.querySelectorAll(os)];
+  const all = () => others.forEach(o => { if (Math.abs(o.currentTime - m.currentTime) > 0.12) o.currentTime = m.currentTime });
+  m.addEventListener("play", () => { all(); others.forEach(o => o.play().catch(() => {})) });
+  m.addEventListener("pause", () => others.forEach(o => o.pause()));
+  m.addEventListener("seeked", all); m.addEventListener("timeupdate", all);
+  m.addEventListener("ratechange", () => others.forEach(o => o.playbackRate = m.playbackRate));
+}
+
+document.addEventListener("keydown", e => {
+  if (!D || !D.ready || /select|input/i.test(e.target.tagName)) return;
+  const arr = sorted(), i = arr.findIndex(s => s.j === cur);
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); const k = Math.min(arr.length - 1, Math.max(0, i + (e.key === "ArrowDown" ? 1 : -1))); go(arr[k].j) }
+  else if (e.key === " ") { e.preventDefault(); const vs = [...document.querySelectorAll("#detail video")].filter(v => !v.classList.contains("sync") || v.classList.contains("master")); const p = vs[0] && vs[0].paused; vs.forEach(v => p ? v.play() : v.pause()) }
+});
+init();
+</script>
+</body>
+</html>

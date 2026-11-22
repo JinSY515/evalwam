@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>직접 체리픽</title>
+<style>
+:root {
+  --bg: #f3f4f6; --panel: #ffffff; --fg: #1b2230; --muted: #5c6577; --line: #d9dde5;
+  --accent: #2f55c8; --accent-soft: #e4eafb; --ours: #c2410c; --base: #6b7280; --pos: #1f9d55; --pos-soft: rgba(31,157,85,.14);
+  --font-ui: "IBM Plex Sans", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #11151c; --panel: #181d26; --fg: #e3e7ee; --muted: #94a0b4; --line: #2a3140;
+  --accent: #7d9cff; --accent-soft: #232c45; --ours: #fb923c; --base: #9aa3b2; --pos: #4cd38a; --pos-soft: rgba(76,211,138,.16); color-scheme: dark } }
+* { box-sizing: border-box }
+html, body { margin: 0 }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; line-height: 1.45 }
+a { color: var(--accent) }
+.wrap { max-width: 2000px; margin: 0 auto; padding: 0 16px 48px }
+header { padding: 18px 0 8px }
+h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px }
+.sub { color: var(--muted); font-size: 13px; max-width: 1100px }
+.bar { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); margin: 0 -16px; padding: 10px 16px }
+.bar-inner { max-width: 1700px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center }
+.ctl { display: flex; align-items: center; gap: 6px }
+.lab { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+select, button, input { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px }
+button { cursor: pointer }
+button:hover { border-color: var(--accent) }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+.grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; margin-top: 14px }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr } .list { max-height: 260px } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px }
+.list { max-height: calc(100vh - 150px); overflow: auto; padding: 4px }
+.list .tools { display: flex; gap: 6px; margin-bottom: 8px; position: sticky; top: 0; background: var(--panel); padding-bottom: 4px }
+.list .tools input { flex: 1; min-width: 0 }
+.item { display: block; width: 100%; text-align: left; border: 1px solid transparent; background: none; padding: 6px 8px; border-radius: 6px; margin: 1px 0 }
+.item:hover { background: var(--accent-soft) }
+.item[aria-current="true"] { background: var(--accent-soft); border-color: var(--accent) }
+.item .nm { font-family: var(--font-data); font-size: 12px; word-break: break-all }
+.item .meta { font-size: 11px; color: var(--muted); font-family: var(--font-data) }
+.item .meta .pos { color: var(--pos) }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 6px }
+.mono { font-family: var(--font-data); font-variant-numeric: tabular-nums }
+.muted { color: var(--muted) }
+svg.curve { width: 100%; height: 190px; display: block; cursor: crosshair; touch-action: none }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--muted); margin: 4px 0 0 }
+.legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px }
+.scrub { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; flex-wrap: wrap }
+.scrub input[type=range] { flex: 1; min-width: 160px; padding: 0 }
+.frameinfo { font-size: 13px }
+.thumb { width: 100%; border-radius: 6px; background: #000; display: block; min-height: 80px }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 }
+.chip { font-family: var(--font-data); font-size: 12px; border-radius: 999px; padding: 3px 10px; background: var(--accent-soft); border: 1px solid var(--accent) }
+.chip:hover { text-decoration: line-through }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.out { margin-top: 12px; display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 1fr); gap: 12px; align-items: start }
+@media (max-width: 1100px) { .out { grid-template-columns: 1fr } }
+.out img { width: 100%; border-radius: 6px; border: 1px solid var(--line); background: #fff }
+#status, #saved { font-size: 13px; color: var(--muted) }
+.kbd { font-family: var(--font-data); font-size: 11px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px }
+.sec { margin-top: 14px }
+.vids { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 8px }
+.vt { position: relative; background: #000; border-radius: 6px; overflow: hidden; aspect-ratio: 384 / 222; border: 2px solid transparent }
+.vt.ours { border-color: var(--ours) }
+.vt video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block }
+.vt .tag { position: absolute; left: 0; top: 0; background: rgba(0,0,0,.65); color: #fff; font-size: 11px; padding: 2px 6px; border-bottom-right-radius: 6px; font-family: var(--font-data) }
+.vt .lp { position: absolute; right: 0; top: 0; background: rgba(0,0,0,.65); color: #fff; font-size: 11px; padding: 2px 6px; border-bottom-left-radius: 6px; font-family: var(--font-data) }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>직접 체리픽</h1>
+  <div class="sub">샘플을 고르고 프레임을 넘겨 보면서 원하는 프레임만 골라 조합해요. 위 곡선은 프레임별 LPIPS(낮을수록 GT에 가까움)이고, 초록 영역이 우리가 모든 베이스라인보다 나은 프레임이에요. 곡선을 클릭하거나 <span class="kbd">←</span><span class="kbd">→</span>(<span class="kbd">Shift</span>는 5칸)로 이동하고, <span class="kbd">Enter</span>로 현재 프레임을 넣거나 빼요(최대 12장). 현재 프레임은 GT · 우리 · 모든 베이스라인이 한 줄로 보이고, 고른 프레임은 바로 아래에 /cherry와 같은 스트립(행 = 고른 프레임, 열 = GT · 우리 · 베이스라인)과 경로 개념도로 자동 갱신돼요. "저장"은 /cherry와 같은 형식으로 cherry_export에 저장해요. 맨 아래 비디오는 GT · 우리 · 베이스라인이 같은 프레임 번호로 맞춰져 자동 반복 재생돼요("현재 프레임으로"는 모두 멈추고 지금 고른 프레임으로 이동). <a href="cherry">자동 후보 페이지 →</a></div>
+</header>
+<div class="bar"><div class="bar-inner">
+  <div class="ctl"><span class="lab">ckpt</span><select id="ck">
+    <option value="7500">ck7500</option><option value="a4000_7500">avg 4000+7500</option><option value="ema8000">EMA 8000</option><option value="a7500_e8000">avg 7500+EMA 8000</option><option value="ema8250">EMA 8250</option><option value="a7500_e8250">avg 7500+EMA 8250</option></select></div>
+  <div class="ctl"><span class="lab">벤치</span><select id="bench">
+    <option value="all">전체</option><option value="valbench5s">valbench5s</option><option value="lookout_f004">LookOut A</option><option value="lookout_f100">LookOut B</option><option value="lookout_c">LookOut C</option></select></div>
+  <span id="status"></span>
+</div></div>
+
+<div class="grid">
+  <div class="panel list" id="listPanel">
+    <div class="tools">
+      <input id="q" type="search" placeholder="이름 검색" aria-label="샘플 이름 검색">
+      <select id="sort" aria-label="정렬"><option value="margin">평균 우세 큰 순</option><option value="win">이긴 프레임 많은 순</option><option value="ours">우리 LPIPS 낮은 순</option><option value="name">이름 순</option></select>
+    </div>
+    <div id="list" role="list"></div>
+  </div>
+
+  <div>
+    <div class="panel" id="main">
+      <div class="muted" id="empty">왼쪽에서 샘플을 고르세요.</div>
+      <div id="body" hidden>
+        <h2 id="title" class="mono"></h2>
+        <div class="muted" id="subtitle" style="font-size:12px"></div>
+        <svg class="curve" id="curve" role="img" aria-label="프레임별 LPIPS: 우리와 가장 좋은 베이스라인"></svg>
+        <div class="legend"><span><i style="background:var(--ours)"></i>우리 LPIPS</span><span><i style="background:var(--base)"></i>베이스라인 중 최저 LPIPS</span><span><i style="background:var(--pos-soft);height:10px"></i>우리가 모두보다 나은 프레임</span><span><i style="background:var(--accent);width:3px;height:12px"></i>고른 프레임</span></div>
+        <div class="scrub">
+          <button type="button" id="prev" aria-label="이전 프레임">◀</button>
+          <input type="range" id="k" min="0" max="76" value="0" aria-label="프레임">
+          <button type="button" id="next" aria-label="다음 프레임">▶</button>
+          <button type="button" id="toggle" class="primary">이 프레임 넣기</button>
+        </div>
+        <div class="frameinfo mono" id="finfo"></div>
+        <a id="thumbA" target="_blank" rel="noopener" title="원본 크기로 열기"><img class="thumb" id="thumb" alt="현재 프레임의 GT, 우리, 모든 베이스라인 (LPIPS 표시)"></a>
+        <div class="sec">
+          <div class="row"><strong>고른 프레임</strong><span class="muted" id="cnt"></span>
+            <button type="button" id="clear">모두 빼기</button>
+            <button type="button" id="save">저장</button><span id="saved"></span>
+            <a id="cmpLink" target="_blank" rel="noopener">비교 페이지에서 보기</a></div>
+          <div class="chips" id="chips"></div>
+        </div>
+        <div class="out" id="out" hidden>
+          <a id="stripA" target="_blank" rel="noopener" title="원본 크기로 열기"><img id="strip" alt="고른 프레임 스트립: 행은 프레임, 열은 GT, 우리, 베이스라인"></a>
+          <div><img id="route" alt="위에서 본 경로 개념도와 고른 프레임 번호"><div style="margin-top:6px"><a id="route2" target="_blank" rel="noopener">정밀 경로 (GT · 예측 액션 · 영상 카메라)</a></div></div>
+        </div>
+        <div class="sec">
+          <div class="row"><strong>비디오</strong>
+            <button type="button" id="vplay">일시정지</button>
+            <select id="vrate" aria-label="재생 속도"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+            <button type="button" id="vseek">현재 프레임으로</button>
+            <span class="mono muted" id="vframe"></span></div>
+          <div class="vids" id="vids"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const store = { get(k, d) { try { const v = localStorage.getItem("mypick_" + k); return v === null ? d : v; } catch { return d; } },
+                set(k, v) { try { localStorage.setItem("mypick_" + k, v); } catch {} } };
+const f3 = x => x == null ? "–" : x.toFixed(3), f1 = x => x == null ? "–" : x.toFixed(1);
+let SAMPLES = [], CUR = null, K = 0, SEL = new Set(), thumbT = null;
+
+function readHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  return { ck: h.get("ck"), b: h.get("b"), n: h.get("n"), k: h.get("k"), sel: h.get("sel") };
+}
+function writeHash() {
+  const h = new URLSearchParams({ ck: $("#ck").value, b: $("#bench").value });
+  if (CUR) { h.set("n", CUR.name); h.set("sb", CUR.bench); h.set("k", K); if (SEL.size) h.set("sel", ks().join("_")); }
+  history.replaceState(null, "", "#" + h.toString());
+}
+const ks = () => [...SEL].sort((a, b) => a - b);
+
+async function loadSamples(keep) {
+  $("#status").textContent = "샘플 목록 불러오는 중…";
+  const r = await fetch(`api/mypick/samples?ck=${$("#ck").value}&bench=${$("#bench").value}`);
+  SAMPLES = r.ok ? await r.json() : [];
+  $("#status").textContent = `${SAMPLES.length}개 샘플`;
+  renderList();
+  if (keep) {
+    const s = SAMPLES.find(x => x.name === keep.n && (!keep.sb || x.bench === keep.sb));
+    if (s) await openSample(s, keep.k != null ? +keep.k : 0, keep.sel ? keep.sel.split("_").map(Number) : []);
+  }
+}
+function renderList() {
+  const q = $("#q").value.trim().toLowerCase(), so = $("#sort").value;
+  let v = SAMPLES.filter(s => !q || s.name.toLowerCase().includes(q));
+  const cmp = { margin: (a, b) => (b.margin ?? -9) - (a.margin ?? -9), win: (a, b) => b.win - a.win,
+                ours: (a, b) => (a.ours ?? 9) - (b.ours ?? 9), name: (a, b) => a.name.localeCompare(b.name) }[so];
+  v.sort(cmp);
+  const L = $("#list"); L.innerHTML = "";
+  for (const s of v) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "item"; b.setAttribute("role", "listitem");
+    b.setAttribute("aria-current", CUR && CUR.name === s.name && CUR.bench === s.bench);
+    b.innerHTML = `<div class="nm">${s.name}</div><div class="meta">${s.label} · #${s.i} · 우리 ${f3(s.ours)} · 우세 <span class="${(s.margin ?? 0) > 0 ? "pos" : ""}">${s.margin == null ? "–" : (s.margin > 0 ? "+" : "") + s.margin.toFixed(3)}</span> · 이긴 ${s.win}f</div>`;
+    b.onclick = () => openSample(s, 0, []);
+    L.appendChild(b);
+  }
+}
+async function openSample(s, k, sel) {
+  const r = await fetch(`api/mypick/curve?ck=${$("#ck").value}&bench=${s.bench}&name=${encodeURIComponent(s.name)}`);
+  if (!r.ok) { $("#status").textContent = "곡선을 못 불러왔어요"; return; }
+  CUR = { ...s, ...(await r.json()) }; SEL = new Set(sel.filter(x => x >= 0 && x < CUR.nf));
+  $("#empty").hidden = true; $("#body").hidden = false; $("#out").hidden = true; outKey = ""; $("#saved").textContent = "";
+  $("#title").textContent = CUR.name;
+  $("#subtitle").textContent = `${s.label} · 샘플 #${CUR.i} · GT 프레임 ${CUR.start}–${CUR.start + CUR.nf - 1} · 우리 평균 LPIPS ${f3(s.ours)} · 베이스라인 대비 평균 우세 ${s.margin == null ? "–" : s.margin.toFixed(3)} · 모두를 이긴 프레임 ${s.win}개`;
+  $("#k").max = CUR.nf - 1;
+  renderList(); setK(Math.min(k, CUR.nf - 1)); buildVideos();
+}
+function setK(k) {
+  if (!CUR) return;
+  K = Math.max(0, Math.min(CUR.nf - 1, k)); $("#k").value = K;
+  const o = CUR.lpips[0][K], best = CUR.best[K];
+  let bj = -1; for (let j = 1; j < CUR.lpips.length; j++) if (CUR.lpips[j][K] != null && (bj < 0 || CUR.lpips[j][K] < CUR.lpips[bj][K])) bj = j;
+  const ps = CUR.psnr[0][K];
+  $("#finfo").innerHTML = `f${K} (GT ${CUR.start + K}) · 우리 LPIPS <b>${f3(o)}</b> · 최저 베이스라인 ${bj > 0 ? CUR.models[bj] : "–"} ${f3(best)} · 차이 <b style="color:${o != null && best != null && best - o > 0 ? "var(--pos)" : "inherit"}">${o != null && best != null ? (best - o > 0 ? "+" : "") + (best - o).toFixed(3) : "–"}</b> · 우리 PSNR ${f1(ps)}`;
+  $("#toggle").textContent = SEL.has(K) ? "이 프레임 빼기" : "이 프레임 넣기";
+  clearTimeout(thumbT);
+  thumbT = setTimeout(() => { $("#thumb").src = $("#thumbA").href = `cherrystrip/${$("#ck").value}/${CUR.bench}/${CUR.name}/${K}.jpg`; }, 150);
+  drawCurve(); renderSel(); writeHash();
+}
+function toggle(k) {
+  if (SEL.has(k)) SEL.delete(k);
+  else { if (SEL.size >= 12) { $("#status").textContent = "최대 12장까지 고를 수 있어요"; return; } SEL.add(k); }
+  setK(K);
+}
+function renderSel() {
+  const C = $("#chips"); C.innerHTML = "";
+  for (const k of ks()) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = `f${k}`;
+    b.title = "클릭하면 빠져요"; b.setAttribute("aria-label", `f${k} 빼기`);
+    b.onclick = () => toggle(k); C.appendChild(b);
+  }
+  $("#cnt").textContent = `${SEL.size}/12`;
+  $("#save").disabled = SEL.size === 0;
+  updateOut();
+  const l = $("#cmpLink"); l.href = `cmp#${CUR.bench.replace(/_/g, "-")}-ck${$("#ck").value}-s${CUR.i}-f${K}`;
+}
+function drawCurve() {
+  const svg = $("#curve"), W = svg.clientWidth || 800, H = 190, pl = 40, pr = 10, pt = 10, pb = 24, n = CUR.nf;
+  const css = getComputedStyle(document.documentElement), c = v => css.getPropertyValue(v).trim();
+  const o = CUR.lpips[0], b = CUR.best;
+  const vals = [...o, ...b].filter(v => v != null), ymax = Math.min(1, Math.max(0.2, ...vals) * 1.08);
+  const x = k => pl + (W - pl - pr) * k / (n - 1), y = v => pt + (H - pt - pb) * (1 - v / ymax);
+  let s = "";
+  for (let k = 0; k < n; k++) if (o[k] != null && b[k] != null && o[k] < b[k]) {
+    const w = (W - pl - pr) / (n - 1); s += `<rect x="${x(k) - w / 2}" y="${pt}" width="${w}" height="${H - pt - pb}" fill="${c("--pos-soft")}"/>`; }
+  for (let t = 0; t <= ymax + 1e-9; t += ymax > 0.5 ? 0.2 : 0.1) s += `<line x1="${pl}" x2="${W - pr}" y1="${y(t)}" y2="${y(t)}" stroke="${c("--line")}"/><text x="${pl - 6}" y="${y(t) + 4}" text-anchor="end" font-size="10" fill="${c("--muted")}">${t.toFixed(1)}</text>`;
+  for (let k = 0; k < n; k += 10) s += `<text x="${x(k)}" y="${H - 6}" text-anchor="middle" font-size="10" fill="${c("--muted")}">f${k}</text>`;
+  const path = arr => { let d = "", pen = false; arr.forEach((v, k) => { if (v == null) { pen = false; return; } d += (pen ? "L" : "M") + x(k).toFixed(1) + "," + y(v).toFixed(1); pen = true; }); return d; };
+  for (const k of SEL) s += `<line x1="${x(k)}" x2="${x(k)}" y1="${pt}" y2="${H - pb}" stroke="${c("--accent")}" stroke-width="2"/>`;
+  s += `<path d="${path(b)}" fill="none" stroke="${c("--base")}" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  s += `<path d="${path(o)}" fill="none" stroke="${c("--ours")}" stroke-width="2"/>`;
+  s += `<line x1="${x(K)}" x2="${x(K)}" y1="${pt}" y2="${H - pb}" stroke="${c("--fg")}" stroke-width="1" stroke-dasharray="2 2"/>`;
+  if (o[K] != null) s += `<circle cx="${x(K)}" cy="${y(o[K])}" r="3.5" fill="${c("--ours")}"/>`;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = s;
+  svg.onpointerdown = e => { const r = svg.getBoundingClientRect(), kk = Math.round((e.clientX - r.left - pl) / (W - pl - pr) * (n - 1)); setK(kk); };
+}
+$("#k").oninput = e => setK(+e.target.value);
+$("#prev").onclick = () => setK(K - 1);
+$("#next").onclick = () => setK(K + 1);
+$("#toggle").onclick = () => toggle(K);
+$("#clear").onclick = () => { SEL.clear(); setK(K); };
+let outT = null, outKey = "";
+function updateOut() {
+  if (!SEL.size) { $("#out").hidden = true; outKey = ""; return; }
+  const p = `${$("#ck").value}/${CUR.bench}/${CUR.name}/${ks().join("_")}`;
+  if (p === outKey) return;
+  outKey = p; clearTimeout(outT);
+  outT = setTimeout(() => { $("#out").hidden = false; $("#strip").src = $("#stripA").href = `cherrystrip/${p}.jpg`; $("#route").src = `cherryroute/${p}.png`; $("#route2").href = `cherryroute2/${p}.png`; }, 400);
+}
+$("#save").onclick = async () => {
+  $("#saved").textContent = "저장 중…";
+  const q = new URLSearchParams({ ck: $("#ck").value, bench: CUR.bench, name: CUR.name, ks: ks().join("_") });
+  try { const r = await (await fetch("api/cherry/export?" + q)).json(); $("#saved").textContent = r.ok ? "저장됨 → " + r.dir : "저장 실패"; }
+  catch { $("#saved").textContent = "저장 실패"; }
+};
+document.addEventListener("keydown", e => {
+  if (!CUR || e.target.matches("input[type=search], select")) return;
+  if (e.key === "ArrowLeft") { setK(K - (e.shiftKey ? 5 : 1)); e.preventDefault(); }
+  else if (e.key === "ArrowRight") { setK(K + (e.shiftKey ? 5 : 1)); e.preventDefault(); }
+  else if (e.key === "Enter") { toggle(K); e.preventDefault(); }
+});
+$("#q").oninput = renderList;
+$("#sort").onchange = () => { store.set("sort", $("#sort").value); renderList(); };
+$("#ck").onchange = () => { store.set("ck", $("#ck").value); const keep = CUR && { n: CUR.name, sb: CUR.bench, k: K, sel: ks().join("_") }; loadSamples(keep); };
+$("#bench").onchange = () => { store.set("bench", $("#bench").value); CUR = null; $("#body").hidden = true; $("#empty").hidden = false; loadSamples(); };
+window.addEventListener("resize", () => CUR && drawCurve());
+
+
+// ---------- synced autoplay video grid (frame k lines up: each video plays at 16/fps x so one frame per 1/16 s)
+let V = [], VPLAY = true, vRaf = null;
+function buildVideos() {
+  const g = $("#vids"); g.innerHTML = ""; V = [];
+  cancelAnimationFrame(vRaf);
+  for (const m of CUR.videos || []) {
+    const t = document.createElement("div"); t.className = "vt" + (m.id === "ours" ? " ours" : "");
+    const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.preload = "auto"; v.loop = false; v.src = m.src;
+    const j = m.id === "gt" ? -1 : m.id === "ours" ? 0 : CUR.models.indexOf(m.label);
+    t.innerHTML = `<span class="tag">${m.label}</span>` + (j >= 0 ? `<span class="lp" data-j="${j}"></span>` : "");
+    t.prepend(v); g.appendChild(t);
+    V.push({ v, fps: m.fps || 16, j });
+  }
+  setRates();
+  if (VPLAY) V.forEach(o => o.v.play().catch(() => {}));
+  vRaf = requestAnimationFrame(syncVideos);
+}
+function setRates() { const r = +$("#vrate").value; V.forEach(o => { o.v.playbackRate = r * 16 / o.fps; }); }
+function vFrame() { const m = V.find(o => o.j === 0) || V[0]; return m ? Math.min(CUR.nf - 1, Math.floor(m.v.currentTime * m.fps)) : 0; }
+function seekAll(k) { V.forEach(o => { o.v.currentTime = (k + 0.5) / o.fps; }); }
+function syncVideos() {
+  if (V.length && CUR) {
+    const m = V.find(o => o.j === 0) || V[0];
+    if (VPLAY && (m.v.ended || m.v.currentTime * m.fps >= CUR.nf - 0.5)) { seekAll(0); V.forEach(o => o.v.play().catch(() => {})); }
+    const k = vFrame();
+    for (const o of V) {
+      if (o === m) continue;
+      const want = (k + 0.5) / o.fps;
+      if (Math.abs(o.v.currentTime - want) > 2.5 / o.fps && (!o.v.ended || VPLAY)) o.v.currentTime = Math.min(want, (o.v.duration || want + 1) - 0.01);
+    }
+    $("#vframe").textContent = `f${k}` + (SEL.has(k) ? " ★ 고른 프레임" : "");
+    document.querySelectorAll(".vt .lp").forEach(e => { const v = CUR.lpips[+e.dataset.j]?.[k]; e.textContent = v == null ? "" : "LPIPS " + v.toFixed(3); });
+  }
+  vRaf = requestAnimationFrame(syncVideos);
+}
+$("#vplay").onclick = () => { VPLAY = !VPLAY; $("#vplay").textContent = VPLAY ? "일시정지" : "재생"; V.forEach(o => VPLAY ? o.v.play().catch(() => {}) : o.v.pause()); };
+$("#vrate").onchange = setRates;
+$("#vseek").onclick = () => { VPLAY = false; $("#vplay").textContent = "재생"; V.forEach(o => o.v.pause()); seekAll(K); };
+
+const h = readHash();
+$("#ck").value = h.ck || store.get("ck", "7500"); $("#bench").value = h.b || store.get("bench", "all"); $("#sort").value = store.get("sort", "margin");
+const sb = new URLSearchParams(location.hash.slice(1)).get("sb");
+loadSamples(h.n ? { n: h.n, sb, k: h.k, sel: h.sel } : null);
+</script>
+</body>
+</html>

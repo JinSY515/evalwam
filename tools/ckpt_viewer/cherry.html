@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>체리픽 후보</title>
+<style>
+:root {
+  --bg: #f3f4f6; --panel: #ffffff; --fg: #1b2230; --muted: #5c6577; --line: #d9dde5;
+  --accent: #2f55c8; --accent-soft: #e4eafb; --ours: #c2410c; --pos: #1f9d55;
+  --font-ui: "IBM Plex Sans", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #11151c; --panel: #181d26; --fg: #e3e7ee; --muted: #94a0b4; --line: #2a3140;
+  --accent: #7d9cff; --accent-soft: #232c45; --ours: #fb923c; --pos: #4cd38a; color-scheme: dark } }
+* { box-sizing: border-box }
+html, body { margin: 0 }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; line-height: 1.45 }
+.wrap { max-width: 1700px; margin: 0 auto; padding: 0 16px 48px }
+header { padding: 18px 0 8px }
+h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px }
+.sub { color: var(--muted); font-size: 13px; max-width: 1100px }
+a { color: var(--accent) }
+.bar { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); margin: 0 -16px; padding: 10px 16px }
+.bar-inner { max-width: 1700px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center }
+.ctl { display: flex; align-items: center; gap: 6px }
+.ctl > span.lab { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+select, button, input[type=number] { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px }
+input[type=number] { width: 76px; font-family: var(--font-data) }
+button { cursor: pointer } button:hover, select:hover { border-color: var(--accent) }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+label.chk { display: inline-flex; gap: 5px; align-items: center; font-size: 13px; cursor: pointer }
+#status { color: var(--muted); font-size: 13px }
+.list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px }
+.card:hover { border-color: var(--accent) }
+.head { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline }
+.head .rk { font-family: var(--font-data); color: var(--muted); min-width: 34px }
+.head .nm { font-weight: 600 }
+.tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent) }
+.nums { font-family: var(--font-data); font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 16px }
+.nums b { color: var(--fg); font-weight: 600 } .nums .o { color: var(--ours) } .nums .g { color: var(--pos) }
+.thumb { width: 100%; height: auto; display: block; border-radius: 4px; background: #000; aspect-ratio: 1536 / 222 }
+.frames { display: flex; gap: 4px; flex-wrap: wrap; font-family: var(--font-data); font-size: 12px }
+.frames button { padding: 1px 7px; font-size: 12px }
+.frames button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent) }
+.empty { color: var(--muted); padding: 30px 0; text-align: center }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden }
+.seg button { border: 0; border-radius: 0; padding: 5px 10px } .seg button + button { border-left: 1px solid var(--line) }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff }
+.strip { width: 100%; height: auto; display: block; border-radius: 4px; background: #000 }
+.viz { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 10px; align-items: start }
+.viz .route { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; background: #fff }
+@media (prefers-color-scheme: dark) { .viz .route { background: #f1f3f5 } }
+@media (max-width: 1000px) { .viz { grid-template-columns: minmax(0, 1fr) } .viz .route { max-width: 360px } }
+.save { font-size: 12px; padding: 2px 9px } .saved { color: var(--pos); font-size: 12px }
+body[data-mode="seg"] .sp { display: none } body[data-mode="spread"] .sg { display: none }
+body[data-mode="rank"] .sg, body[data-mode="rank"] .spf { display: none } body:not([data-mode="rank"]) .rk2 { display: none }
+@media (max-width: 700px) { .nums { font-size: 11.5px } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>체리픽 후보</h1>
+  <div class="sub"><b>시퀀스당 여러 장</b>: 목표는 "우리만 GT와 비슷하고 나머지는 확실히 달라 보이는" 프레임이에요. 기본값은 10개 베이스라인을 모두 이기고(이긴 베이스라인 10/10), 가장 비슷한 베이스라인조차 LPIPS ≥ 0.30(눈에 띄게 다름)인 프레임만 써요. 우리 LPIPS ≤ t 이고 10개 베이스라인 중 "이긴 베이스라인 수" 이상을 LPIPS m 이상 차이로 이기는 프레임 중에서, 서로 시간 간격이 최대가 되도록 n장을 골라요(최소 간격 미만이면 제외). 이웃한 두 장 사이 GT 카메라 회전은 "이웃 장 회전 ≤" 이하로 제한해서 장면이 이어져 보이게 하고(시야각 약 93°), 같은 간격이면 전체 회전 범위가 큰 쪽을 골라요. GT 안에서 장면이 끊기는(순간이동) 시퀀스는 기본으로 빼요. GT 칸에는 첫 장 대비 회전·이동을 적었어요.
+    "씬 변화량"은 8프레임 간격 GT 이미지끼리의 평균 픽셀 차이(0–255)로, 클수록 장면이 많이 바뀌는 다이나믹한 시퀀스예요. 기본 정렬이 이 값이에요.
+    오른쪽 그림은 피겨용 개념도예요(위에서 본 모습, 시작 시점 진행 방향이 위): 회색 선이 GT 경로, 번호가 고른 프레임(스트립의 행 순서), 부채꼴이 그 프레임에서 카메라가 보는 방향(시야 약 93°), 검은 점이 시작, 분홍 별이 goal이에요. 그 아래 문장이 프레임 사이에 일어난 일이에요. 정밀 비교(GT · 예측 액션 · 영상 카메라)는 링크로 볼 수 있어요. "저장"은 cherry_export/&lt;bench&gt;/&lt;sample&gt;/&lt;model&gt;/frames/fKK.png(각 모델 원본 해상도) + route.png(개념도, 투명 배경) + route_detail.png(정밀) + meta.json(설명 문장 포함)으로 저장해요.
+    스트립의 행은 고른 프레임(위→아래 시간순), 열은 왼쪽부터 GT · 우리 · 10개 베이스라인이에요. 칸마다 GT 대비 LPIPS를 적었어요. 프레임 번호를 누르면 비교 페이지가 그 프레임에서 열려요.</div>
+  <div class="sub">프레임 k마다 GT와의 LPIPS·PSNR을 우리(ckpt)와 10개 베이스라인 모두 같은 영역(모든 베이스라인이 덮는 GT 세로 108–404줄)에서 비교했어요.
+    <b>우리 LPIPS ≤ t</b> 이면서 <b>가장 좋은 베이스라인보다 LPIPS가 m 이상 낮은</b> 프레임이 <b>l개 이상 이어진 구간</b>을 후보로 뽑아요(점수 = 평균 차이 × √길이).
+    썸네일은 구간에서 차이가 가장 큰 프레임의 GT | 우리 | 가장 좋은 베이스라인 | 가장 나쁜 베이스라인이에요. 카드를 누르면 베이스라인 비교 페이지의 그 샘플·프레임으로 이동해요.
+    LookOut A·B는 제외 명단 17개를 뺀 85개, valbench5s는 120개예요. C(turn77 val)는 35개예요. 평균 ckpt(avg 4000+7500)의 C는 그 35개를 바로 생성한 결과예요.</div>
+</header>
+<div class="bar"><div class="bar-inner">
+  <div class="ctl"><span class="lab">모드</span><div class="seg" id="modeSeg">
+    <button type="button" data-mode="rank">전체 우세 순</button><button type="button" data-mode="spread">시퀀스당 여러 장</button><button type="button" data-mode="seg">연속 구간</button></div></div>
+  <div class="ctl"><span class="lab">ckpt</span><select id="ck">
+    <option value="7500">ck7500</option><option value="a4000_7500">avg 4000+7500</option><option value="ema8000">EMA 8000</option><option value="a7500_e8000">avg 7500+EMA 8000</option><option value="ema8250">EMA 8250</option><option value="a7500_e8250">avg 7500+EMA 8250</option></select></div>
+  <div class="ctl"><span class="lab">벤치</span><select id="bench">
+    <option value="all">전체</option><option value="valbench5s">valbench5s</option><option value="lookout_f004">LookOut A</option><option value="lookout_f100">LookOut B</option><option value="lookout_c">LookOut C</option></select></div>
+  <div class="ctl spf"><span class="lab">t (우리 LPIPS ≤)</span><input type="number" id="t" step="0.01" min="0" max="1" value="0.35"></div>
+  <div class="ctl spf"><span class="lab">m (차이 ≥)</span><input type="number" id="m" step="0.01" min="0" max="1" value="0.08"></div>
+  <div class="ctl sg"><span class="lab">l (연속 프레임 ≥)</span><input type="number" id="l" step="1" min="1" max="77" value="5"></div>
+  <div class="ctl sp spf"><span class="lab">이긴 베이스라인 ≥ (/10)</span><input type="number" id="kbeat" step="1" min="1" max="10" value="10"></div>
+  <div class="ctl sp spf"><span class="lab">다른 모델 최소 LPIPS ≥</span><input type="number" id="bmin" step="0.01" min="0" max="1" value="0.30"></div>
+  <div class="ctl sp"><span class="lab">장수 n</span><input type="number" id="n" step="1" min="2" max="10" value="5"></div>
+  <div class="ctl sp"><span class="lab">최소 간격 (프레임)</span><input type="number" id="gmin" step="1" min="1" max="40" value="6"></div>
+  <div class="ctl"><span class="lab">시작 프레임 ≥</span><input type="number" id="kmin" step="1" min="0" max="76" value="0"></div>
+  <label class="chk spf"><input type="checkbox" id="psnr"> PSNR도 모두보다 높게</label>
+  <div class="ctl sg"><span class="lab">정렬</span><select id="sort">
+    <option value="score">점수</option><option value="len">구간 길이</option><option value="peak_margin">최대 차이</option><option value="ours_lp">우리 LPIPS 낮은 순</option><option value="sample_win">샘플 전체 승률</option></select></div>
+  <label class="chk sg"><input type="checkbox" id="one" checked> 샘플당 1개</label>
+  <div class="ctl sp"><span class="lab">이웃 장 회전 ≤ (°)</span><input type="number" id="ymax" step="5" min="5" max="180" value="35"></div>
+  <label class="chk sp"><input type="checkbox" id="cut"> GT 끊김 포함</label>
+  <div class="ctl sp spf"><span class="lab">씬 변화량 ≥</span><input type="number" id="dmin" step="1" min="0" max="100" value="0"></div>
+  <div class="ctl sp"><span class="lab">정렬</span><select id="sort2">
+    <option value="score" class="rk2">우리 조건 점수 (기본)</option><option value="dom" class="rk2">전체 우세도 (최선 베이스라인 대비 평균 LPIPS 차이)</option><option value="win_all" class="rk2">우리가 10개 모두 이긴 프레임 비율</option>
+    <option value="margin_best">가장 비슷한 베이스라인 대비 차이 큰 순</option><option value="yaw_range">선택 장면 회전 범위 큰 순</option><option value="img">씬 다이나믹한 순 (화면 변화)</option><option value="yaw">카메라 회전 많은 순</option><option value="path">이동 거리 긴 순</option><option value="min_gap">간격 큰 순</option><option value="margin_med">베이스라인 중간값 대비 차이</option><option value="ours_lp">우리 LPIPS 낮은 순</option><option value="n_ok">조건 만족 프레임 수</option></select></div>
+  <button type="button" id="saveAll" class="sp">목록 전체 저장</button>
+  <span id="status"></span>
+</div></div>
+<div class="list" id="list"></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const store = { get(k, d) { try { const v = localStorage.getItem("cherry2_" + k); return v == null ? d : JSON.parse(v) } catch (e) { return d } },
+                set(k, v) { try { localStorage.setItem("cherry2_" + k, JSON.stringify(v)) } catch (e) {} } };
+let CK = store.get("ck", "7500"); let D = null, MODE = store.get("mode", "spread");
+const SPID = ["kbeat", "bmin", "n", "gmin", "dmin", "ymax", "sort2"];
+// EgoWM made it 10 baselines: a saved "beat 9/9" (= all) becomes 10/10 once
+if (!store.get("nb10", false)) { if (store.get("kbeat", null) == 9) store.set("kbeat", 10); store.set("nb10", true); }
+for (const id of SPID) { const v = store.get(id, null); if (v != null) $("#" + id).value = v; }
+function setMode(m) { MODE = m; document.body.dataset.mode = m; store.set("mode", m);
+  document.querySelectorAll("#modeSeg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === m)); load(); }
+document.querySelectorAll("#modeSeg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+for (const id of ["bench", "t", "m", "l", "kmin", "sort"]) { const v = store.get(id, null); if (v != null) $("#" + id).value = v; }
+for (const id of ["psnr", "one"]) { const v = store.get(id, null); if (v != null) $("#" + id).checked = v; }
+const f3 = x => x == null ? "–" : (+x).toFixed(3), f1 = x => x == null ? "–" : (+x).toFixed(1);
+async function loadRank() {
+  for (const id of ["bench", ...SPID]) store.set(id, $("#" + id).value);
+  $("#status").textContent = "불러오는 중…";
+  const q = new URLSearchParams({ ck: CK, bench: $("#bench").value, n: $("#n").value, gmin: $("#gmin").value, ymax: $("#ymax").value, cut: $("#cut").checked ? 1 : 0, kmin: $("#kmin").value });
+  try { const r = await fetch("api/cherry/rank?" + q); if (!r.ok) throw new Error(r.status); D = await r.json(); }
+  catch (e) { $("#status").textContent = `불러오지 못했어요 (${e.message}).`; return; }
+  if (!["score", "dom", "win_all", "margin_med", "img", "yaw_range"].includes($("#sort2").value)) $("#sort2").value = "score";
+  renderSpread();
+}
+async function loadSpread() {
+  for (const id of ["bench", "t", "m", "kmin", ...SPID]) store.set(id, $("#" + id).value);
+  store.set("psnr", $("#psnr").checked);
+  $("#status").textContent = "불러오는 중…";
+  const q = new URLSearchParams({ ck: CK, bench: $("#bench").value, t: $("#t").value, m: $("#m").value, kbeat: $("#kbeat").value, n: $("#n").value,
+                                  gmin: $("#gmin").value, dmin: $("#dmin").value, bmin: $("#bmin").value, ymax: $("#ymax").value, cut: $("#cut").checked ? 1 : 0, kmin: $("#kmin").value, psnr: $("#psnr").checked ? 1 : 0 });
+  try { const r = await fetch("api/cherry/spread?" + q); if (!r.ok) throw new Error(r.status); D = await r.json(); }
+  catch (e) { $("#status").textContent = `불러오지 못했어요 (${e.message}).`; return; }
+  renderSpread();
+}
+function renderSpread() {
+  const key = $("#sort2").value, asc = key === "ours_lp";
+  const R = D.rows.slice().sort((a, b) => asc ? a[key] - b[key] : b[key] - a[key]);
+  const P = D.dyn_pct || {};
+  if (MODE === "rank") { $("#status").textContent = `전체 ${R.length}개 시퀀스 · 자르지 않고 정렬만 · 프레임 점수 = 가장 비슷한 베이스라인의 LPIPS − 1.5×우리 LPIPS (우리는 GT와 비슷, 베이스라인은 모두 GT와 다름) · 이 점수 합이 최대인 5장(간격·연속성 조건 지킴) · 순서 = 그 5장 평균 점수 + 씬 다이나믹 가산`; } else
+  $("#status").textContent = `조건을 만족하는 시퀀스 ${R.length}개 / ${D.n_samples}개 · 씬 변화량 분포(전체 샘플) 25/50/75/90% = ${[25, 50, 75, 90].map(q => P[q] ?? "–").join(" / ")} · GT 끊김으로 뺀 시퀀스 ${D.n_cut ?? 0}개`;
+  const L = $("#list"); L.innerHTML = "";
+  if (!R.length) { L.innerHTML = `<div class="empty">조건에 맞는 시퀀스가 없어요. t를 올리거나, 이긴 베이스라인 수·m·최소 간격을 낮춰 보세요.</div>`; return; }
+  R.slice(0, 150).forEach((r, n) => {
+    const ks = r.frames.map(f => f.k), link = k => `cmp#${r.bench.replace(/_/g, "-")}-ck${CK}-s${r.i}-f${k}`;
+    const c = document.createElement("div"); c.className = "card";
+    c.innerHTML = `<div class="head"><span class="rk">#${n + 1}</span><span class="tag">${r.label}</span>
+        <a class="nm" href="${link(ks[0])}" target="_blank" rel="noopener">${r.name}</a>
+        <button type="button" class="save" data-b="${r.bench}" data-n="${r.name}" data-k="${ks.join("_")}">저장</button><span class="saved"></span>
+        <span class="sub">샘플 ${r.i} · 프레임 ${ks.join(", ")} · 장 사이 회전 ${r.yaw_steps.map(y => (y >= 0 ? "+" : "") + y.toFixed(0) + "°").join(", ")} (범위 ${f1(r.yaw_range)}°) · 최소 간격 ${r.min_gap} · 범위 ${r.span}f · 조건 만족 프레임 ${r.n_ok}개</span></div>
+      <div class="viz"><img class="strip" loading="lazy" alt="프레임 ${ks.join(", ")}: 행은 프레임, 열은 GT, 우리, 10개 베이스라인" src="cherrystrip/${CK}/${r.bench}/${r.name}/${ks.join("_")}.jpg?v=6">
+        <img class="route" loading="lazy" alt="위에서 본 경로: GT, 우리 예측 액션, 우리 영상의 카메라(DA3), goal, 고른 프레임 번호" src="cherryroute/${CK}/${r.bench}/${r.name}/${ks.join("_")}.png?v=14"></div>
+      <div class="nums"><span>📍 ${r.desc}</span><a href="cherryroute2/${CK}/${r.bench}/${r.name}/${ks.join("_")}.png" target="_blank" rel="noopener">정밀 경로 (GT·예측 액션·영상 카메라)</a></div>
+      <div class="nums"><span>선택 프레임 평균 LPIPS 우리 <b class="o">${f3(r.ours_lp)}</b> · 베이스라인 중간값 대비 <b class="g">−${f3(r.margin_med)}</b> · 최선 베이스라인 대비 <b class="g">${r.margin_best >= 0 ? "−" : "+"}${f3(Math.abs(r.margin_best))}</b></span>
+        <span>샘플 전체 우리 LPIPS ${f3(r.sample_ours_lp)}${r.score != null ? ` · <b>우리 조건 점수 ${f3(r.score)}</b>` : ""}${r.dom != null ? ` · 전체 우세도 ${f3(r.dom)} · 10개 모두 이긴 프레임 <b>${(r.win_all * 100).toFixed(0)}%` : ""}</span>
+        <span>씬 다이나믹: 화면 변화 <b>${f1(r.img)}</b> · 카메라 회전 누적 <b>${f1(r.yaw)}°</b> · 이동 <b>${(+r.path).toFixed(1)}m</b></span></div>
+      <div class="frames"><span class="sub">프레임별 (비교 페이지로):</span>${r.frames.map(f =>
+        `<a href="${link(f.k)}" target="_blank" rel="noopener" title="우리 ${f3(f.ours_lp)} · 최선 ${f.best_model} ${f3(f.best_lp)} · 이긴 베이스라인 ${f.nbeat}/10">f${f.k} <span class="sub">${f3(f.ours_lp)} vs ${f3(f.best_lp)} · ${f.nbeat}/10</span></a>`).join(" · ")}</div>`;
+    L.appendChild(c);
+  });
+}
+async function exportOne(btn) {
+  const q = new URLSearchParams({ ck: CK, bench: btn.dataset.b, name: btn.dataset.n, ks: btn.dataset.k });
+  const lab = btn.nextElementSibling; lab.textContent = "저장 중…";
+  try { const r = await (await fetch("api/cherry/export?" + q)).json(); lab.textContent = r.ok ? "저장됨 → " + r.dir : "실패"; return r.ok; }
+  catch (e) { lab.textContent = "실패"; return false; }
+}
+document.addEventListener("click", e => { const b = e.target.closest("button.save"); if (b) exportOne(b); });
+$("#saveAll").onclick = async () => {
+  const bs = [...document.querySelectorAll("button.save")]; let ok = 0;
+  for (const [i, b] of bs.entries()) { $("#status").textContent = `저장 중 ${i + 1}/${bs.length}…`; if (await exportOne(b)) ok++; }
+  $("#status").textContent = `${ok}/${bs.length}개 시퀀스 저장 완료 → cherry_export${CK == "7500" ? "" : "_ck" + CK}/<bench>/<sample>/<model>/frames`;
+};
+async function load() {
+  if (MODE === "rank") return loadRank();
+  if (MODE === "spread") return loadSpread();
+  for (const id of ["bench", "t", "m", "l", "kmin", "sort"]) store.set(id, $("#" + id).value);
+  for (const id of ["psnr", "one"]) store.set(id, $("#" + id).checked);
+  $("#status").textContent = "불러오는 중…";
+  const q = new URLSearchParams({ ck: CK, bench: $("#bench").value, t: $("#t").value, m: $("#m").value, l: $("#l").value, kmin: $("#kmin").value, psnr: $("#psnr").checked ? 1 : 0 });
+  try { const r = await fetch("api/cherry?" + q); if (!r.ok) throw new Error(r.status); D = await r.json(); }
+  catch (e) { $("#status").textContent = `불러오지 못했어요 (${e.message}).`; return; }
+  render();
+}
+function render() {
+  const key = $("#sort").value, asc = key === "ours_lp";
+  let S = D.segments.slice().sort((a, b) => asc ? a[key] - b[key] : b[key] - a[key]);
+  if ($("#one").checked) { const seen = new Set(); S = S.filter(s => { const k = s.bench + s.i; if (seen.has(k)) return false; seen.add(k); return true; }); }
+  $("#status").textContent = `후보 ${S.length}개 · 샘플 ${D.n_samples}개 중 ${new Set(D.segments.map(s => s.bench + s.i)).size}개에서 나옴`;
+  const L = $("#list"); L.innerHTML = "";
+  if (!S.length) { L.innerHTML = `<div class="empty">조건에 맞는 구간이 없어요. t를 올리거나 m·l을 낮춰 보세요. (계산이 아직 안 끝난 벤치는 비어 있을 수 있어요)</div>`; return; }
+  S.slice(0, 200).forEach((s, n) => {
+    const c = document.createElement("div"); c.className = "card";
+    const link = k => `cmp#${s.bench.replace(/_/g, "-")}-ck${CK}-s${s.i}-f${k}`;
+    c.innerHTML = `<div class="head"><span class="rk">#${n + 1}</span><span class="tag">${s.label}</span>
+        <a class="nm" href="${link(s.peak)}" target="_blank" rel="noopener">${s.name}</a>
+        <span class="sub">샘플 ${s.i} · 프레임 ${s.k0}–${s.k1} (${s.len}f) · 최대 차이 프레임 ${s.peak} (GT f${s.gt_frame})</span></div>
+      <img class="thumb" loading="lazy" alt="GT, 우리, 가장 좋은 베이스라인, 가장 나쁜 베이스라인 프레임 ${s.peak}" src="cherryimg/${CK}/${s.bench}/${s.name}/${s.peak}.jpg">
+      <div class="nums"><span>LPIPS 우리 <b class="o">${f3(s.ours_lp)}</b> · 최선 베이스라인 <b>${f3(s.best_lp)}</b> (${s.best_model}) · 차이 <b class="g">${f3(s.peak_margin)}</b> (구간 평균 ${f3(s.margin)})</span>
+        <span>PSNR 우리 <b class="o">${f1(s.ours_ps)}</b> · 베이스라인 최고 <b>${f1(s.best_ps)}</b></span>
+        <span>샘플 전체: 우리 LPIPS ${f3(s.sample_ours_lp)} · 최선 베이스라인 ${f3(s.sample_best_lp)} · 우리가 이긴 프레임 ${(s.sample_win * 100).toFixed(0)}%</span>
+        <span>점수 ${f3(s.score)}</span></div>
+      <div class="frames"><span class="sub">구간 안 다른 프레임:</span></div>`;
+    const fr = c.querySelector(".frames"), img = c.querySelector("img"), a = c.querySelector("a.nm");
+    const ks = [...new Set([s.k0, Math.round((s.k0 + s.k1) / 2), s.peak, s.k1])].sort((x, y) => x - y);
+    ks.forEach(k => { const b = document.createElement("button"); b.type = "button"; b.textContent = `f${k}`; b.setAttribute("aria-pressed", k === s.peak);
+      b.onclick = () => { img.src = `cherryimg/${CK}/${s.bench}/${s.name}/${k}.jpg`; a.href = link(k);
+        fr.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); }; fr.appendChild(b); });
+    L.appendChild(c);
+  });
+}
+for (const id of ["bench", "t", "m", "l", "kmin", "psnr", "kbeat", "bmin", "n", "gmin", "dmin", "ymax", "cut"]) $("#" + id).addEventListener("change", load);
+for (const id of ["sort", "one"]) $("#" + id).addEventListener("change", render);
+$("#ck").value = CK; $("#ck").addEventListener("change", () => { CK = $("#ck").value; store.set("ck", CK); load(); });
+$("#sort2").addEventListener("change", () => D && D.rows && renderSpread());
+setMode(MODE);
+</script>
+</body>
+</html>

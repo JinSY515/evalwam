@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>체리피킹 뷰어</title>
+<style>
+:root {
+  --bg: #f3f4f6; --panel: #ffffff; --fg: #1b2230; --muted: #5c6577; --line: #d9dde5;
+  --accent: #2f55c8; --accent-soft: #e4eafb; --ours: #c2410c; --ours-soft: #fde7da; --star: #d99a00;
+  --best: #1f9d55; --best-bg: #d7f2e1; --second: #a87800; --second-bg: #fbefc9;
+  --tile-label: rgba(10, 14, 22, .72);
+  --font-ui: "IBM Plex Sans", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #11151c; --panel: #181d26; --fg: #e3e7ee; --muted: #94a0b4; --line: #2a3140;
+  --accent: #7d9cff; --accent-soft: #232c45; --ours: #fb923c; --ours-soft: #3a2416; --star: #f0c24b;
+  --best: #4cd38a; --best-bg: #163a28; --second: #f0c24b; --second-bg: #3d3214; color-scheme: dark } }
+* { box-sizing: border-box }
+html, body { margin: 0 }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; line-height: 1.45 }
+.wrap { max-width: 1800px; margin: 0 auto; padding: 0 16px 48px }
+header.top { padding: 18px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline }
+h1 { font-size: 20px; font-weight: 600; margin: 0 }
+h2 { font-size: 15px; font-weight: 600; margin: 0 }
+.sub { color: var(--muted); font-size: 13px }
+a { color: var(--accent) }
+.bar { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); margin: 0 -16px; padding: 8px 16px }
+.bar-inner { max-width: 1800px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center }
+.ctl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap }
+.ctl > span.lab { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+select, button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer }
+button:hover, select:hover { border-color: var(--accent) }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden }
+.seg button { border: 0; border-radius: 0; padding: 5px 10px }
+.seg button + button { border-left: 1px solid var(--line) }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff }
+.chips { display: flex; flex-wrap: wrap; gap: 4px }
+.chips button { font-size: 12px; padding: 2px 8px }
+.chips button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent) }
+.framectl { flex: 1 1 360px; display: flex; gap: 8px; align-items: center }
+.framectl input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent) }
+.fr { font-family: var(--font-data); font-size: 13px; font-variant-numeric: tabular-nums; min-width: 128px }
+.main { display: grid; grid-template-columns: 290px minmax(0, 1fr) 220px; gap: 14px; margin-top: 12px; align-items: start }
+@media (max-width: 1250px) { .main { grid-template-columns: minmax(0, 1fr) 220px } .list { grid-column: 1 / -1; order: 3; max-height: 360px !important; position: static !important } }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr) } }
+.list { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow-y: auto; max-height: calc(100vh - 80px); position: sticky; top: 64px }
+.list button { display: grid; grid-template-columns: 22px 1fr; gap: 0 6px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 6px 10px; background: transparent }
+.list button:hover { background: var(--accent-soft) }
+.list button[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent) }
+.list .no { font-family: var(--font-data); font-size: 12px; color: var(--muted); grid-row: span 2 }
+.list .nm { font-size: 12.5px; overflow-wrap: anywhere }
+.list .meta { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; align-items: center }
+.star { color: var(--star); font-weight: 700 }
+.note { font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--ours-soft); color: var(--ours) }
+.diff { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent) }
+.grid { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 4px }
+.tile { position: relative; aspect-ratio: 1; background: #000; overflow: hidden; border: 2px solid transparent; border-radius: 4px; cursor: zoom-in }
+.tile.ours { border-color: var(--ours) }
+.tile img, .tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block }
+.tile video { pointer-events: none }
+.tl { position: absolute; left: 5px; top: 5px; right: 5px; display: flex; gap: 4px; flex-wrap: wrap }
+.tag { font-family: var(--font-data); font-size: 12px; color: #fff; background: var(--tile-label); padding: 1px 6px; border-radius: 4px }
+.tile.ours .tag { background: var(--ours) }
+.nof { position: absolute; inset: 0; display: grid; place-items: center; color: #9aa3b2; font-size: 13px; background: #000 }
+.hint { color: var(--muted); font-size: 12px; margin: 6px 0 0 }
+.rail { display: flex; flex-direction: column; gap: 12px; min-width: 0 }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px }
+.card img { display: block; width: 100%; border-radius: 4px }
+.cap { font-size: 12px; color: var(--muted) }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 13px; margin: 0 }
+.kv dt { color: var(--muted) } .kv dd { margin: 0; font-family: var(--font-data); font-size: 12px; overflow-wrap: anywhere }
+section.blk { margin-top: 24px; display: flex; flex-direction: column; gap: 10px }
+.blk-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center }
+.strip-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px }
+.strip { display: grid; gap: 3px; align-items: center }
+.strip .rl { font-size: 12px; color: var(--muted); white-space: nowrap; padding-right: 6px; position: sticky; left: 0; background: var(--panel) }
+.strip .rl.ours { color: var(--ours); font-weight: 600 }
+.strip .ch { font-family: var(--font-data); font-size: 11px; color: var(--muted); text-align: center }
+.strip .ch.cur { color: var(--accent); font-weight: 700 }
+.strip img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #000; display: block; border-radius: 2px; cursor: pointer; border: 2px solid transparent }
+.strip img.cur { border-color: var(--accent) }
+.strip .empty { aspect-ratio: 1; background: var(--bg); border-radius: 2px }
+.transport { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center }
+.tbl-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
+th, td { padding: 5px 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line) }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--panel) }
+thead th { font-weight: 500; font-size: 12px; color: var(--muted) }
+th.ours { color: var(--ours); font-weight: 600 }
+td { font-family: var(--font-data); font-size: 12px }
+td.name { font-family: var(--font-ui); font-size: 13px }
+tr.grp td { font-family: var(--font-ui); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--bg) !important; text-align: left }
+td.b1 { background: var(--best-bg); color: var(--best); font-weight: 600 }
+td.b2 { background: var(--second-bg); color: var(--second); font-weight: 600 }
+td.oc { box-shadow: inset 2px 0 0 var(--ours) }
+.dirmark { color: var(--muted); font-size: 11px; margin-left: 4px }
+.loading { color: var(--muted); padding: 40px 0 }
+.status { font-size: 12px; color: var(--muted) }
+[hidden] { display: none !important }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>체리피킹 뷰어</h1>
+    <span class="sub" id="sub">불러오는 중…</span>
+    <a class="sub" href="cmp">베이스라인 비교</a>
+    <a class="sub" href="./">체크포인트 뷰어</a>
+  </header>
+
+  <div class="bar"><div class="bar-inner">
+    <div class="ctl"><span class="lab">샘플</span>
+      <button id="sprev" type="button" aria-label="이전 샘플">▲</button>
+      <button id="snext" type="button" aria-label="다음 샘플">▼</button>
+      <span class="fr" id="sname"></span></div>
+    <div class="framectl">
+      <button id="fprev" type="button" aria-label="이전 프레임">◀</button>
+      <input type="range" id="scrub" min="0" max="78" value="0" step="1" aria-label="프레임">
+      <button id="fnext" type="button" aria-label="다음 프레임">▶</button>
+      <button id="fplay" type="button">프레임 재생</button>
+      <span class="fr" id="frame"></span>
+    </div>
+    <div class="ctl"><span class="lab">열</span><div class="seg" id="colSeg"></div></div>
+    <div class="ctl"><span class="lab">보이기</span><div class="chips" id="chips"></div></div>
+  </div></div>
+
+  <div id="app" class="loading">불러오는 중…</div>
+  <div id="content" hidden>
+    <div class="main">
+      <nav class="list" id="list" aria-label="샘플 목록"></nav>
+      <div>
+        <div class="grid" id="fgrid"></div>
+        <p class="hint">← → 프레임 · Shift+← → 5프레임 · ↑ ↓ 샘플 · 스페이스 프레임 재생 · 타일을 누르면 그 프레임 원본(512px)이 새 탭에 열려요. 프레임 k = GT f(start+k).</p>
+        <span class="status" id="status"></span>
+      </div>
+      <aside class="rail">
+        <div class="card"><h2>Goal</h2>
+          <img id="goalBase" alt="베이스라인 goal"><span class="cap" id="goalBaseCap"></span>
+          <img id="goalOurs" alt="우리 goal"><span class="cap" id="goalOursCap"></span>
+        </div>
+        <div class="card"><h2>샘플</h2><dl class="kv" id="info"></dl></div>
+      </aside>
+    </div>
+
+    <section class="blk">
+      <div class="blk-head"><h2>필름스트립</h2>
+        <div class="ctl"><span class="lab">간격</span><div class="seg" id="strideSeg"></div></div>
+        <span class="sub">칸을 누르면 그 프레임으로 이동해요</span></div>
+      <div class="strip-wrap"><div class="strip" id="strip"></div></div>
+    </section>
+
+    <section class="blk">
+      <div class="blk-head"><h2>비디오</h2>
+        <div class="transport">
+          <button id="vplay" type="button">재생</button>
+          <select id="rate" aria-label="재생 속도"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+          <span class="status" id="vstatus"></span>
+        </div></div>
+      <div class="grid" id="vgrid"></div>
+    </section>
+
+    <section class="blk">
+      <div class="blk-head"><h2 id="mtitle">지표</h2><span class="sub">Ours = ck4000 · 1등 초록, 2등 노랑 · 지표 주의사항은 베이스라인 비교 페이지와 같아요</span></div>
+      <div class="tbl-wrap"><table><thead id="mhead"></thead><tbody id="mbody"></tbody></table></div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const GT_FPS = 16;
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v) } catch (e) { return d } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch (e) {} } };
+const S = { D: null, cur: 0, k: 0, cols: store.get("pick_cols", 4), stride: store.get("pick_stride", 8),
+            hidden: new Set(store.get("pick_hidden", [])), timer: null, vids: [], playing: false, preload: [] };
+const f3 = v => v == null ? "–" : (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(3));
+
+function sample() { return S.D.samples[S.cur] }
+function sources(s) {   // [{id, label, ours, nf}]
+  const out = [{ id: "gt", label: "GT", nf: S.D.nf }];
+  s.cks.forEach(c => out.push({ id: "ck" + c, label: `Ours ck${c}`, ours: true, nf: s.ours_nf }));
+  S.D.models.forEach(m => out.push({ id: m.id, label: m.label, nf: S.D.nf }));
+  return out;
+}
+function visSources(s) { return sources(s).filter(x => !S.hidden.has(x.id) || x.id === "gt" || x.ours) }
+const furl = (s, src, k) => `pickf/${s.name}/${src}/${String(k).padStart(2, "0")}.jpg`;
+
+function buildList() {
+  $("#list").innerHTML = "";
+  S.D.samples.forEach((s, n) => {
+    const b = document.createElement("button"); b.type = "button";
+    b.innerHTML = `<span class="no">${n + 1}</span><span class="nm">${s.star ? '<span class="star">★</span> ' : ""}${s.name.replace(/^id_\w+?__/, "").replace(/_Opt__/, " · ").replace(/__/g, " · ")}</span>` +
+      `<span class="meta">${s.diff ? `<span class="diff">${s.diff}</span>` : ""}${s.note ? `<span class="note">${s.note}</span>` : ""}${s.missing ? '<span class="note">없음</span>' : ""}</span>`;
+    b.onclick = () => selectSample(n);
+    $("#list").appendChild(b);
+  });
+}
+function markList() {
+  [...$("#list").children].forEach((b, n) => b.setAttribute("aria-current", n === S.cur));
+  const c = $("#list").children[S.cur]; if (c) c.scrollIntoView({ block: "nearest" });
+}
+
+function buildFrameGrid() {
+  const s = sample(), g = $("#fgrid"); g.innerHTML = ""; g.style.setProperty("--cols", S.cols);
+  visSources(s).forEach(src => {
+    const t = document.createElement("div"); t.className = "tile" + (src.ours ? " ours" : ""); t.dataset.src = src.id; t.dataset.nf = src.nf;
+    t.innerHTML = `<img alt="${src.label}"><div class="nof" hidden>프레임 없음 (${src.nf}f)</div><div class="tl"><span class="tag">${src.label}</span></div>`;
+    t.onclick = () => { if (S.k < src.nf) window.open(furl(s, src.id, S.k), "_blank"); };
+    g.appendChild(t);
+  });
+  showFrame();
+}
+function showFrame() {
+  const s = sample(); if (!s || s.missing) return;
+  document.querySelectorAll("#fgrid .tile").forEach(t => {
+    const has = S.k < +t.dataset.nf;
+    t.querySelector(".nof").hidden = has;
+    const img = t.querySelector("img"); img.hidden = !has;
+    if (has) img.src = furl(s, t.dataset.src, S.k);
+  });
+  $("#scrub").value = S.k;
+  $("#frame").textContent = `k ${S.k} / 78 · GT f${s.first + S.k}`;
+  document.querySelectorAll("#strip img").forEach(im => im.classList.toggle("cur", +im.dataset.k === S.k));
+  document.querySelectorAll("#strip .ch").forEach(h => h.classList.toggle("cur", +h.dataset.k === S.k));
+  location.replace(`#${s.name}-f${S.k}`);
+}
+function setFrame(k) { S.k = Math.max(0, Math.min(S.D.nf - 1, k)); showFrame(); }
+
+function preloadAll() {
+  const s = sample(); S.preload.forEach(im => im.src = ""); S.preload = [];
+  const srcs = visSources(s); let total = 0, done = 0;
+  const order = [];
+  for (let d = 0; d < S.D.nf; d++) for (const k of [S.k + d, S.k - d]) if (k >= 0 && k < S.D.nf && !order.includes(k)) order.push(k);
+  order.forEach(k => srcs.forEach(src => { if (k < src.nf) {
+    total++; const im = new Image(); im.onload = im.onerror = () => { done++; $("#status").textContent = done < total ? `프레임 미리 불러오는 중 ${done}/${total}` : ""; };
+    im.src = furl(s, src.id, k); S.preload.push(im); } }));
+}
+
+function buildStrip() {
+  const s = sample(), st = $("#strip"), ks = [];
+  for (let k = 0; k < S.D.nf; k += S.stride) ks.push(k);
+  if (ks[ks.length - 1] !== S.D.nf - 1) ks.push(S.D.nf - 1);
+  st.style.gridTemplateColumns = `max-content repeat(${ks.length}, minmax(64px, 1fr))`;
+  let h = `<div class="rl"></div>` + ks.map(k => `<div class="ch" data-k="${k}">f${s.first + k}</div>`).join("");
+  visSources(s).forEach(src => {
+    h += `<div class="rl ${src.ours ? "ours" : ""}">${src.label}</div>` + ks.map(k => k < src.nf
+      ? `<img loading="lazy" data-k="${k}" src="${furl(s, src.id, k)}" alt="${src.label} f${s.first + k}">` : `<div class="empty"></div>`).join("");
+  });
+  st.innerHTML = h;
+  st.querySelectorAll("img").forEach(im => im.onclick = () => { stopFrames(); setFrame(+im.dataset.k); window.scrollTo({ top: 0, behavior: "smooth" }); });
+  showFrame();
+}
+
+// ---- videos (synced by frame index; Aether is 12 fps)
+function buildVideos() {
+  vstop();
+  const s = sample(), g = $("#vgrid"); g.innerHTML = ""; S.vids = []; g.style.setProperty("--cols", S.cols);
+  const fpsOf = id => (id === "aether_planning" ? 12 : GT_FPS);
+  visSources(s).forEach(src => {
+    const t = document.createElement("div"); t.className = "tile" + (src.ours ? " ours" : "");
+    const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.preload = "metadata"; v.src = `pickv/${s.name}/${src.id}.mp4`;
+    const tl = document.createElement("div"); tl.className = "tl"; tl.innerHTML = `<span class="tag">${src.label}</span>`;
+    t.append(v, tl); g.appendChild(t); S.vids.push({ v, fps: fpsOf(src.id) });
+  });
+  S.master = S.vids[0].v;
+  S.master.addEventListener("ended", () => { if (S.playing) { S.vids.forEach(o => o.v.currentTime = 0); vplay(); } });
+}
+function vplay() {
+  const r = +$("#rate").value;
+  S.vids.forEach(o => { o.v.preload = "auto"; o.v.playbackRate = r * o.fps / GT_FPS; const p = o.v.play(); if (p) p.catch(() => {}); });
+  S.playing = true; $("#vplay").textContent = "정지"; vtick();
+}
+function vstop() { S.playing = false; S.vids.forEach(o => o.v.pause()); $("#vplay").textContent = "재생"; }
+function vtick() {
+  if (!S.playing) return;
+  const k = S.master.currentTime * GT_FPS;
+  S.vids.forEach(o => {
+    if (o.v === S.master) return;
+    const d = o.v.duration || 99, want = k / o.fps;
+    if (want > d) { if (!o.v.paused) o.v.pause(); }
+    else if (Math.abs(o.v.currentTime - want) > 0.07) o.v.currentTime = want;
+    else if (o.v.paused) { const p = o.v.play(); if (p) p.catch(() => {}); }
+  });
+  $("#vstatus").textContent = `GT f${sample().first + Math.min(78, Math.floor(k))}`;
+  requestAnimationFrame(vtick);
+}
+
+// ---- frame autoplay
+function playFrames() {
+  if (S.timer) return stopFrames();
+  $("#fplay").textContent = "정지";
+  S.timer = setInterval(() => setFrame(S.k >= S.D.nf - 1 ? 0 : S.k + 1), 1000 / 8);
+}
+function stopFrames() { clearInterval(S.timer); S.timer = null; $("#fplay").textContent = "프레임 재생"; }
+
+function metrics() {
+  const s = sample(); if (!s.m || !Object.keys(s.m).length) { $("#mbody").innerHTML = ""; return; }
+  $("#mtitle").textContent = `지표 · ${s.name}`;
+  const labels = [`Ours ck${S.D.ours_ck}`, ...S.D.models.map(m => m.label)];
+  $("#mhead").innerHTML = "<tr><th>지표</th>" + labels.map((l, j) => `<th class="${j === 0 ? "ours" : ""}">${l}</th>`).join("") + "</tr>";
+  let h = "", grp = null;
+  S.D.metrics.forEach(m => {
+    if (m.group !== grp) { grp = m.group; h += `<tr class="grp"><td colspan="${labels.length + 1}">${grp}</td></tr>`; }
+    const row = s.m[m.key] || [];
+    const ord = row.map((v, j) => j).filter(j => row[j] != null).sort((a, b) => (row[b] - row[a]) * m.dir);
+    const r = {}; if (ord[0] != null) r[ord[0]] = 1; if (ord[1] != null && row[ord[1]] !== row[ord[0]]) r[ord[1]] = 2;
+    h += `<tr><td class="name">${m.label}<span class="dirmark">${m.dir > 0 ? "↑" : "↓"}</span></td>` +
+      row.map((v, j) => `<td class="${r[j] ? "b" + r[j] : ""} ${j === 0 ? "oc" : ""}">${f3(v)}</td>`).join("") + "</tr>";
+  });
+  $("#mbody").innerHTML = h;
+}
+function info() {
+  const s = sample();
+  $("#sname").textContent = `${S.cur + 1} / ${S.D.samples.length}`;
+  $("#info").innerHTML = `<dt>이름</dt><dd>${s.name}</dd>` + (s.note ? `<dt>메모</dt><dd>${s.note}</dd>` : "") +
+    (s.place || []).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("") +
+    `<dt>BL 창</dt><dd>f${s.first}–${s.last} (79f)</dd><dt>우리 창</dt><dd>f${s.first}–${s.first + s.ours_nf - 1} (${s.ours_nf}f)</dd>` +
+    `<dt>index</dt><dd>all120 #${s.i}</dd>`;
+  $("#goalBase").src = `cmpgoal/valbench5s/${s.i}_base.png`; $("#goalBaseCap").textContent = `베이스라인 goal = GT f${s.last}`;
+  const og = s.goal != null && s.goal !== s.last;
+  $("#goalOurs").hidden = $("#goalOursCap").hidden = !og;
+  if (og) { $("#goalOurs").src = `cmpgoal/valbench5s/${s.i}_ours.png`; $("#goalOursCap").textContent = `우리 goal = GT f${s.goal}`; }
+}
+
+function selectSample(n, k) {
+  stopFrames();
+  S.cur = Math.max(0, Math.min(S.D.samples.length - 1, n));
+  const s = sample();
+  if (s.missing) { $("#fgrid").innerHTML = `<p class="loading">${s.name}: 결과를 찾지 못했어요</p>`; markList(); return; }
+  S.k = k != null ? Math.max(0, Math.min(S.D.nf - 1, k)) : 0;
+  markList(); info(); buildFrameGrid(); buildStrip(); buildVideos(); metrics(); preloadAll();
+}
+function buildChips() {
+  const s = sample();
+  $("#chips").innerHTML = S.D.models.map(m => `<button type="button" data-id="${m.id}" aria-pressed="${!S.hidden.has(m.id)}">${m.label}</button>`).join("");
+  $("#chips").querySelectorAll("button").forEach(b => b.onclick = () => {
+    const id = b.dataset.id; S.hidden.has(id) ? S.hidden.delete(id) : S.hidden.add(id);
+    b.setAttribute("aria-pressed", !S.hidden.has(id)); store.set("pick_hidden", [...S.hidden]);
+    buildFrameGrid(); buildStrip(); buildVideos();
+  });
+}
+
+async function init() {
+  const r = await fetch("api/pick/data");
+  if (!r.ok) { $("#app").textContent = "불러오기 실패: " + await r.text(); return; }
+  S.D = await r.json();
+  $("#app").hidden = true; $("#content").hidden = false;
+  $("#sub").textContent = `valbench5s ${S.D.samples.length}개 · Ours ck${S.D.ours_ck} vs 베이스라인 7종 · 목록은 서버의 pick_list.txt (고치고 새로고침)`;
+  $("#colSeg").innerHTML = [3, 4, 5, 6].map(c => `<button type="button" data-c="${c}" aria-pressed="${c === S.cols}">${c}</button>`).join("");
+  $("#colSeg").querySelectorAll("button").forEach(b => b.onclick = () => {
+    S.cols = +b.dataset.c; store.set("pick_cols", S.cols);
+    $("#colSeg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    $("#fgrid").style.setProperty("--cols", S.cols); $("#vgrid").style.setProperty("--cols", S.cols);
+  });
+  $("#strideSeg").innerHTML = [2, 4, 8, 13].map(c => `<button type="button" data-c="${c}" aria-pressed="${c === S.stride}">${c}</button>`).join("");
+  $("#strideSeg").querySelectorAll("button").forEach(b => b.onclick = () => {
+    S.stride = +b.dataset.c; store.set("pick_stride", S.stride);
+    $("#strideSeg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); buildStrip();
+  });
+  buildList(); buildChips();
+  $("#sprev").onclick = () => selectSample(S.cur - 1); $("#snext").onclick = () => selectSample(S.cur + 1);
+  $("#fprev").onclick = () => { stopFrames(); setFrame(S.k - 1); }; $("#fnext").onclick = () => { stopFrames(); setFrame(S.k + 1); };
+  $("#scrub").oninput = () => { stopFrames(); setFrame(+$("#scrub").value); };
+  $("#fplay").onclick = playFrames;
+  $("#vplay").onclick = () => S.playing ? vstop() : vplay();
+  $("#rate").onchange = () => { if (S.playing) vplay(); };
+  document.addEventListener("keydown", e => {
+    if (["SELECT", "TEXTAREA"].includes(e.target.tagName) || (e.target.tagName === "INPUT" && e.target.type !== "range")) return;
+    const step = e.shiftKey ? 5 : 1;
+    if (e.key === "ArrowLeft") { e.preventDefault(); stopFrames(); setFrame(S.k - step); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); stopFrames(); setFrame(S.k + step); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); selectSample(S.cur - 1); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); selectSample(S.cur + 1); }
+    else if (e.key === " ") { e.preventDefault(); playFrames(); }
+  });
+  const h = decodeURIComponent(location.hash).match(/^#(.+)-f(\d+)$/);
+  const n = h ? S.D.samples.findIndex(s => s.name === h[1]) : -1;
+  selectSample(n >= 0 ? n : 0, n >= 0 ? +h[2] : 0);
+}
+init();
+</script>
+</body>
+</html>

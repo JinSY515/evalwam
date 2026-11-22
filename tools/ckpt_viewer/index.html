@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>체크포인트 뷰어</title>
+<style>
+/* Lab viewer: sticky control bar, synced grid of original clips (GT + checkpoints), GT-vs-selected zoom, per-sample + average tables. */
+:root {
+  --bg: #f3f4f6; --panel: #ffffff; --fg: #1b2230; --muted: #5c6577; --line: #d9dde5;
+  --accent: #2f55c8; --accent-soft: #e4eafb;
+  --best: #1f9d55; --best-bg: #d7f2e1; --second: #a87800; --second-bg: #fbefc9;
+  --tile-label: rgba(10, 14, 22, .72);
+  --font-ui: "IBM Plex Sans", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #11151c; --panel: #181d26; --fg: #e3e7ee; --muted: #94a0b4; --line: #2a3140;
+  --accent: #7d9cff; --accent-soft: #232c45;
+  --best: #4cd38a; --best-bg: #163a28; --second: #f0c24b; --second-bg: #3d3214; color-scheme: dark } }
+* { box-sizing: border-box }
+html, body { margin: 0 }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; line-height: 1.45 }
+.wrap { max-width: 1600px; margin: 0 auto; padding: 0 16px 48px }
+header.top { padding: 18px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline }
+h1 { font-size: 20px; font-weight: 600; margin: 0 }
+.sub { color: var(--muted); font-size: 13px }
+h2 { font-size: 15px; font-weight: 600; margin: 0 }
+.bar { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line); margin: 0 -16px; padding: 10px 16px }
+.bar-inner { max-width: 1600px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center }
+.ctl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap }
+.ctl > span.lab { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+select, button { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer }
+button:hover, select:hover { border-color: var(--accent) }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden }
+.seg button { border: 0; border-radius: 0; padding: 5px 10px }
+.seg button + button { border-left: 1px solid var(--line) }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff }
+.ckchips { display: flex; flex-wrap: wrap; gap: 4px }
+.ckchips button { font-family: var(--font-data); font-size: 12px; padding: 2px 7px }
+.ckchips button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent) }
+input[type=range] { accent-color: var(--accent) }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 16px; margin-top: 14px }
+@media (max-width: 1000px) { .main { grid-template-columns: minmax(0, 1fr) } }
+.grid { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 4px }
+.tile { position: relative; aspect-ratio: 1; background: #000; overflow: hidden; border: 2px solid transparent; border-radius: 4px; cursor: pointer }
+.tile.sel { border-color: var(--accent) }
+.tile video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; pointer-events: none }
+.tl { position: absolute; left: 5px; top: 5px; display: flex; gap: 4px; align-items: center; flex-wrap: wrap }
+.tag, .chip { font-family: var(--font-data); font-size: 12px; color: #fff; background: var(--tile-label); padding: 1px 6px; border-radius: 4px }
+.chip.b1 { background: #1f9d55 } .chip.b2 { background: #e0a800; color: #1a1400 }
+.transport { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 10px }
+.transport input[type=range] { flex: 1 1 200px; min-width: 0 }
+.fr { font-family: var(--font-data); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 80px }
+.status { font-size: 12px; color: var(--muted) }
+.rail { display: flex; flex-direction: column; gap: 12px; min-width: 0 }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px }
+.card img { display: block; width: 100%; border-radius: 4px }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 13px; margin: 0 }
+.kv dt { color: var(--muted) } .kv dd { margin: 0; font-family: var(--font-data); font-size: 12px; overflow-wrap: anywhere }
+.diff { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent) }
+.zoom { display: grid; grid-template-columns: repeat(2, minmax(0, 512px)); gap: 8px; margin-top: 14px }
+.zoom canvas { width: 100%; aspect-ratio: 1; background: #000; border-radius: 6px; display: block }
+.zoom figure { margin: 0 } .zoom figcaption { font-family: var(--font-data); font-size: 12px; color: var(--muted); margin-top: 3px }
+.hint { color: var(--muted); font-size: 12px; margin: 6px 0 0 }
+section.blk { margin-top: 26px; display: flex; flex-direction: column; gap: 10px }
+.blk-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline }
+.tbl-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
+th, td { padding: 5px 9px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line) }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--panel) }
+thead th { font-family: var(--font-data); font-weight: 500; font-size: 12px; color: var(--muted) }
+td { font-family: var(--font-data); font-size: 12px }
+td:first-child { font-family: var(--font-ui); font-size: 13px }
+tr.grp td, tr.grp td:first-child { font-family: var(--font-ui); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--bg); text-align: left }
+td.b1 { background: var(--best-bg); color: var(--best); font-weight: 600 }
+td.b2 { background: var(--second-bg); color: var(--second); font-weight: 600 }
+th.off, td.off { opacity: .45 }
+tr.hl td:first-child { color: var(--accent); font-weight: 600 }
+tr.clickable { cursor: pointer } tr.clickable:hover td:first-child { color: var(--accent) }
+td.spark { padding: 2px 9px } td.spark svg { display: block }
+.dirmark { color: var(--muted); font-size: 11px; margin-left: 4px }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); align-items: center }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px }
+.loading { color: var(--muted); padding: 40px 0 }
+[hidden] { display: none !important }
+.benchsel { font-weight: 600 }
+.empty { color: var(--muted); padding: 30px 0 }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 id="ttl">체크포인트 뷰어</h1>
+    <span class="sub">같은 window를 체크포인트별 원본 영상으로 동시 재생 · 새로 평가된 체크포인트는 새로고침하면 자동으로 추가돼요</span>
+    <a class="sub" href="cmp">베이스라인 비교 →</a> <a class="sub" href="roll">Long rollout 순위 →</a> <a class="sub" href="cherry">체리피킹 →</a> <a class="sub" href="mypick">직접 체리픽 →</a> <a class="sub" href="attn">어텐션 분석 →</a> <a class="sub" href="ablation">Ablation 비교 →</a> <a class="sub" href="vcons/">direct vs residual →</a>
+  </header>
+
+  <div class="bar"><div class="bar-inner">
+    <div class="ctl"><span class="lab">벤치마크</span><select id="benchSel" class="benchsel" aria-label="벤치마크"></select></div>
+    <div class="ctl" id="diffCtl"><span class="lab">난이도</span><div class="seg" id="diffSeg" role="group" aria-label="난이도"></div></div>
+    <div class="ctl"><span class="lab">샘플</span>
+      <button id="prev" aria-label="이전 샘플">◀</button>
+      <select id="sampleSel" aria-label="샘플 선택"></select>
+      <button id="next" aria-label="다음 샘플">▶</button></div>
+    <div class="ctl"><span class="lab">타일 지표</span><select id="metricSel" aria-label="타일에 표시할 지표"></select></div>
+    <div class="ctl"><span class="lab">정렬</span>
+      <select id="sortSel" aria-label="샘플 정렬">
+        <option value="idx">번호순</option>
+        <option value="spread">체크포인트 간 차이 큰 순 (타일 지표)</option>
+      </select></div>
+    <div class="ctl"><span class="lab">열</span>
+      <select id="colsSel" aria-label="한 줄 타일 수"><option>3</option><option>4</option><option>5</option><option>6</option></select></div>
+    <div class="ctl"><span class="lab">보일 체크포인트</span><div class="ckchips" id="ckChips"></div></div>
+  </div></div>
+
+  <div id="app">
+  <div class="main">
+    <div>
+      <div class="grid" id="grid"></div>
+      <div class="transport">
+        <button id="play">일시정지</button>
+        <select id="rate" aria-label="재생 속도"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+        <input type="range" id="scrub" min="0" max="76" value="0" step="1" aria-label="프레임">
+        <span class="fr" id="frame">0 / 76</span>
+        <span class="status" id="status">불러오는 중…</span>
+      </div>
+      <p class="hint">타일을 누르면 아래에 GT와 크게 나란히 보여줘요. 타일 숫자는 이 샘플의 값이고 초록 = 1등, 노랑 = 2등이에요(보이는 체크포인트끼리 비교). ←/→ 샘플 이동, 스페이스 재생/정지, ,/. 한 프레임 이동.</p>
+      <div class="zoom">
+        <figure><canvas id="zGT" width="512" height="512"></canvas><figcaption>GT</figcaption></figure>
+        <figure><canvas id="zSel" width="512" height="512"></canvas><figcaption id="zCap"></figcaption></figure>
+      </div>
+    </div>
+    <aside class="rail">
+      <div class="card"><h2>Goal 이미지</h2><img id="goalImg" alt="이 샘플의 goal 프레임"></div>
+      <div class="card"><dl class="kv" id="info"></dl></div>
+    </aside>
+  </div>
+
+  <section class="blk">
+    <div class="blk-head"><h2 id="perTitle">이 샘플의 지표</h2>
+      <div class="legend"><span><span class="sw" style="background:var(--best-bg);border:1px solid var(--best)"></span>1등</span><span><span class="sw" style="background:var(--second-bg);border:1px solid var(--second)"></span>2등</span><span>행을 누르면 타일 지표가 바뀌어요 · 흐린 열 = 숨긴 체크포인트</span></div></div>
+    <div class="tbl-wrap"><table id="perTbl"></table></div>
+  </section>
+
+  <section class="blk">
+    <div class="blk-head"><h2 id="aggTitle">체크포인트별 평균</h2><span class="sub" id="aggSub"></span></div>
+    <div class="tbl-wrap"><table id="aggTbl"></table></div>
+  </section>
+  </div>
+</div>
+
+<script>
+(async function () {
+  const $ = id => document.getElementById(id);
+  const pad = i => String(i).padStart(2, '0');
+  const FPS = 16;
+  const store = { get(k, d) { try { const v = localStorage.getItem('ckv_' + k); return v === null ? d : v; } catch (e) { return d; } },
+                  set(k, v) { try { localStorage.setItem('ckv_' + k, v); } catch (e) {} } };
+  const fmt = v => v == null ? '–' : (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(3));
+
+  let BENCHES = [], D = null, CK = [], NC = 0, M = [], MK = {}, hidden = new Set(), NF = 77;
+  const S = { bench: store.get('bench', 'valbench5s'), diff: 'all', metric: store.get('metric', 'act_rot'), sort: store.get('sort', 'idx'),
+              cur: 0, sel: null, playing: true, cols: store.get('cols', '4') };
+
+  try { BENCHES = await (await fetch('api/benches')).json(); }
+  catch (e) { $('status').textContent = '벤치마크 목록을 불러오지 못했어요. 서버 로그를 확인해 주세요.'; return; }
+  const benchSel = $('benchSel');
+  BENCHES.forEach(b => { const o = document.createElement('option'); o.value = b.id; o.disabled = !b.ckpts.length;
+    o.textContent = `${b.label} — ${b.ckpts.length ? 'ckpt ' + b.ckpts[0] + '–' + b.ckpts[b.ckpts.length - 1] + ' (' + b.ckpts.length + '개)' : '결과 없음'}`; benchSel.append(o); });
+
+  // ---------- helpers
+  function ranks(vals, dir, mask) {
+    const ok = vals.map((v, i) => [v, i]).filter(t => t[0] != null && (!mask || mask[t[1]]));
+    const r = vals.map(() => 0);
+    if (ok.length < 2) return r;
+    ok.sort((a, b) => dir * (b[0] - a[0]));
+    const b1 = ok[0][0]; ok.forEach(([v, i]) => { if (v === b1) r[i] = 1; });
+    const rest = ok.filter(t => t[0] !== b1);
+    if (rest.length) { const b2 = rest[0][0]; rest.forEach(([v, i]) => { if (v === b2) r[i] = 2; }); }
+    return r;
+  }
+  const vis = () => CK.filter(c => !hidden.has(c));
+  const visMask = () => CK.map(c => !hidden.has(c));
+  function spread(s, k) { const m = visMask(); const v = s.m[k].filter((x, i) => x != null && m[i]); return v.length ? Math.max(...v) - Math.min(...v) : -1; }
+  const hashOf = (b, i) => `${b.replace(/_/g, '-')}-s${i}`;
+
+  // ---------- static controls
+  $('sortSel').value = S.sort; $('colsSel').value = S.cols; $('grid').style.setProperty('--cols', S.cols);
+  $('colsSel').addEventListener('change', e => { S.cols = e.target.value; store.set('cols', S.cols); $('grid').style.setProperty('--cols', S.cols); });
+  const metricSel = $('metricSel');
+  function fillMetrics() {
+    if (metricSel.options.length) return;
+    let g0 = null;
+    M.forEach(m => {
+      if (m.group !== g0) { g0 = m.group; const og = document.createElement('optgroup'); og.label = m.group; metricSel.append(og); }
+      const o = document.createElement('option'); o.value = m.key; o.textContent = `${m.label} ${m.dir > 0 ? '↑' : '↓'}`; metricSel.lastChild.append(o);
+    });
+    if (!MK[S.metric]) S.metric = 'act_rot';
+    metricSel.value = S.metric;
+  }
+
+  function list() {
+    let L = D.samples.filter(s => S.diff === 'all' || s.diff === S.diff);
+    if (S.sort === 'spread') L = L.slice().sort((a, b) => spread(b, S.metric) - spread(a, S.metric));
+    return L;
+  }
+  function fillSamples() {
+    const sel = $('sampleSel'), L = list();
+    sel.replaceChildren(...L.map(s => { const o = document.createElement('option'); o.value = s.i;
+      const where = s.place.map(p => p[1]).slice(0, 2).join(' ');
+      o.textContent = `#${pad(s.i)}${s.diff ? ' ' + s.diff : ''} · ${where}` + (S.sort === 'spread' ? ` · Δ${fmt(spread(s, S.metric))}` : ''); return o; }));
+    if (!L.some(s => s.i === S.cur)) S.cur = L[0].i;
+    sel.value = S.cur;
+  }
+  function step(d) { const L = list(), k = L.findIndex(s => s.i === S.cur); go(L[(k + d + L.length) % L.length].i); }
+
+  function buildDiff() {
+    const seg = $('diffSeg'); seg.replaceChildren();
+    $('diffCtl').hidden = D.groups.length < 2;
+    D.groups.forEach(g => { const b = document.createElement('button'); b.textContent = g === 'all' ? '전체' : g; b.dataset.d = g;
+      b.setAttribute('aria-pressed', g === S.diff);
+      b.addEventListener('click', () => { S.diff = g; store.set('diff_' + S.bench, g);
+        seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x.dataset.d === S.diff));
+        const before = S.cur; fillSamples(); paintAgg(); if (S.cur !== before) go(S.cur); });
+      seg.append(b); });
+  }
+  function buildChips() {
+    const chips = $('ckChips'); chips.replaceChildren();
+    CK.forEach(c => { const b = document.createElement('button'); b.textContent = c; b.setAttribute('aria-pressed', !hidden.has(c));
+      b.addEventListener('click', () => { if (hidden.has(c)) hidden.delete(c); else if (vis().length > 1) hidden.add(c);
+        b.setAttribute('aria-pressed', !hidden.has(c)); store.set('hidden_' + S.bench, JSON.stringify([...hidden]));
+        if (hidden.has(S.sel)) S.sel = vis()[0];
+        buildGrid(); loadVideos(); paintTiles(); paintPer(); paintAgg(); if (S.sort === 'spread') fillSamples(); });
+      chips.append(b); });
+  }
+
+  // ---------- grid of videos (GT first; GT clip is the master clock)
+  let tiles = [], loadToken = 0;
+  function buildGrid() {
+    tiles.forEach(t => { t.v.removeAttribute('src'); t.v.load(); });
+    const g = $('grid'); g.replaceChildren(); tiles = [];
+    [null, ...vis()].forEach(ck => {
+      const el = document.createElement('div'); el.className = 'tile';
+      el.setAttribute('role', 'button'); el.tabIndex = 0; el.setAttribute('aria-label', ck == null ? 'GT' : 'checkpoint ' + ck);
+      const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto';
+      const tl = document.createElement('div'); tl.className = 'tl';
+      const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = ck == null ? 'GT' : ck; tl.append(tag);
+      let chip = null; if (ck != null) { chip = document.createElement('span'); chip.className = 'chip'; tl.append(chip); }
+      el.append(v, tl);
+      if (ck != null) { const pick = () => { S.sel = ck; paintTiles(); }; el.addEventListener('click', pick); el.addEventListener('keydown', e => { if (e.key === 'Enter') pick(); }); }
+      g.append(el); tiles.push({ ck, el, v, chip });
+    });
+  }
+  const master = () => tiles[0].v;
+  function loadVideos() {
+    const i = S.cur, b = S.bench; let ready = 0; const n = tiles.length, token = ++loadToken;
+    $('status').textContent = `영상 ${n}개 불러오는 중…`;
+    setTimeout(() => { if (token === loadToken && ready < n) { $('status').textContent = ''; ready = n; restart(); } }, 6000);
+    tiles.forEach(t => {
+      t.v.src = t.ck == null ? `gt/${b}/${i}.mp4` : `media/${b}/${t.ck}/sample_${pad(i)}.mp4`;
+      t.v.playbackRate = +$('rate').value;
+      t.v.addEventListener('canplaythrough', () => { if (token === loadToken && ++ready === n) { $('status').textContent = ''; restart(); } }, { once: true });
+      t.v.addEventListener('error', () => { if (token === loadToken) $('status').textContent = `불러오지 못한 영상이 있어요: ${t.ck ?? 'GT'}`; }, { once: true });
+      t.v.load();
+    });
+  }
+  function restart() { tiles.forEach(t => { t.v.currentTime = 0; }); if (S.playing) tiles.forEach(t => t.v.play().catch(() => {})); }
+  function seekAll(time) { tiles.forEach(t => { t.v.currentTime = time; }); }
+  function togglePlay() {
+    S.playing = !S.playing; $('play').textContent = S.playing ? '일시정지' : '재생';
+    if (S.playing) { seekAll(master().currentTime); tiles.forEach(t => t.v.play().catch(() => {})); } else tiles.forEach(t => t.v.pause());
+  }
+  function stepFrame(d) {
+    if (S.playing) togglePlay();
+    const f = Math.max(0, Math.min(NF - 1, Math.round(master().currentTime * FPS - .5) + d)); seekAll((f + .5) / FPS);
+  }
+  let scrubbing = false;
+  $('scrub').addEventListener('input', e => { scrubbing = true; if (S.playing) togglePlay(); seekAll((+e.target.value + .5) / FPS); });
+  $('scrub').addEventListener('change', () => { scrubbing = false; });
+  $('play').addEventListener('click', togglePlay);
+  $('rate').addEventListener('change', e => tiles.forEach(t => { t.v.playbackRate = +e.target.value; }));
+
+  const zG = $('zGT').getContext('2d'), zS = $('zSel').getContext('2d');
+  function tick() {
+    if (tiles.length) {
+      const m = master(), tm = m.currentTime;
+      if (S.playing && m.ended) restart();
+      tiles.forEach((t, k) => {
+        if (!k || t.v.readyState < 2) return;
+        if (Math.abs(t.v.currentTime - tm) > (S.playing ? 0.07 : 0.001)) t.v.currentTime = tm;
+        if (S.playing && t.v.paused && !m.paused && !t.v.ended) t.v.play().catch(() => {});
+      });
+      if (m.readyState >= 2) {
+        zG.drawImage(m, 0, 0, 512, 512);
+        const st_ = tiles.find(t => t.ck === S.sel);
+        if (st_ && st_.v.readyState >= 2) zS.drawImage(st_.v, 0, 0, 512, 512);
+        const f = Math.min(NF - 1, Math.floor(tm * FPS + 1e-3));
+        $('frame').textContent = `${f} / ${NF - 1}`; if (!scrubbing) $('scrub').value = f;
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  function paintTiles() {
+    const s = D.samples[S.cur], m = MK[S.metric], v = s.m[S.metric], r = ranks(v, m.dir, visMask());
+    tiles.forEach(t => {
+      t.el.classList.toggle('sel', t.ck === S.sel);
+      if (t.ck == null) return;
+      const j = CK.indexOf(t.ck);
+      t.chip.textContent = fmt(v[j]); t.chip.className = 'chip' + (r[j] ? ' b' + r[j] : ''); t.chip.title = m.label;
+    });
+    $('zCap').textContent = `ckpt ${S.sel} · ${m.label} ${fmt(v[CK.indexOf(S.sel)])}`;
+  }
+
+  // ---------- tables
+  function sparkSVG(xs, ys, dir, hiIdx) {
+    const W = 150, H = 28, P = 3;
+    if (xs.some(x => typeof x !== 'number')) xs = xs.map((_, i) => i);   // mixed runs (ft400 …): even spacing
+    const pts = ys.map((y, i) => [xs[i], y]).filter(p => p[1] != null);
+    if (pts.length < 2) return '';
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...pts.map(p => p[1])), y1 = Math.max(...pts.map(p => p[1]));
+    const X = x => P + (W - 2 * P) * (x - x0) / (x1 - x0 || 1);
+    const Y = y => dir > 0 ? H - P - (H - 2 * P) * (y - y0) / (y1 - y0 || 1) : P + (H - 2 * P) * (y - y0) / (y1 - y0 || 1);
+    const d = pts.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join(' ');
+    const dots = pts.map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="1.4" fill="var(--accent)"/>`).join('');
+    const best = hiIdx >= 0 && ys[hiIdx] != null ? `<circle cx="${X(xs[hiIdx]).toFixed(1)}" cy="${Y(ys[hiIdx]).toFixed(1)}" r="3" fill="var(--best)"/>` : '';
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="1.4"/>${dots}${best}</svg>`;
+  }
+  function table(el, getVals, extraRows) {
+    const mask = visMask();
+    const head = `<thead><tr><th>지표</th>${CK.map((c, i) => `<th class="${mask[i] ? '' : 'off'}">${c}</th>`).join('')}<th>추이 (위 = 좋음)</th></tr></thead>`;
+    let body = '', g = null;
+    extraRows.concat(M.map(m => ({ key: m.key, label: m.label, dir: m.dir, group: m.group, vals: getVals(m.key) }))).forEach(row => {
+      if (row.group !== g) { g = row.group; body += `<tr class="grp"><td colspan="${NC + 2}">${g}</td></tr>`; }
+      const r = ranks(row.vals, row.dir, mask);
+      body += `<tr class="${MK[row.key] ? 'clickable' + (row.key === S.metric ? ' hl' : '') : ''}" data-k="${row.key}"><td>${row.label}<span class="dirmark">${row.dir > 0 ? '↑' : '↓'}</span></td>` +
+        row.vals.map((v, i) => `<td class="${(r[i] ? 'b' + r[i] : '') + (mask[i] ? '' : ' off')}">${fmt(v)}</td>`).join('') +
+        `<td class="spark">${sparkSVG(CK, row.vals, row.dir, r.indexOf(1))}</td></tr>`;
+    });
+    el.innerHTML = head + '<tbody>' + body + '</tbody>';
+    el.querySelectorAll('tr.clickable').forEach(tr => tr.addEventListener('click', () => setMetric(tr.dataset.k)));
+  }
+  function paintPer() { const s = D.samples[S.cur]; $('perTitle').textContent = `이 샘플의 지표 · #${pad(s.i)}`; table($('perTbl'), k => s.m[k], []); }
+  function paintAgg() {
+    const d = S.diff, n = D.samples.filter(s => d === 'all' || s.diff === d).length;
+    $('aggTitle').textContent = `체크포인트별 평균 · ${d === 'all' ? '' : d + ' '}${n}개`;
+    $('aggSub').textContent = (d === 'all' ? 'FVD는 집합 단위 지표예요.' : 'FVD는 집합 단위라 난이도별로는 빠져요.') +
+      (D.skipped.length ? ` window가 달라 제외한 체크포인트: ${D.skipped.join(', ')}` : '');
+    const extra = d === 'all' ? [{ key: 'fvd16', label: 'FVD (16 frames)', dir: -1, group: 'Video (set-level)', vals: D.fvd.fvd16 },
+                                  { key: 'fvdall', label: `FVD (all ${NF} frames)`, dir: -1, group: 'Video (set-level)', vals: D.fvd.fvdall }] : [];
+    table($('aggTbl'), k => D.agg[k][d], extra);
+  }
+  function paintInfo() {
+    const s = D.samples[S.cur];
+    $('info').innerHTML = `<dt>샘플</dt><dd>#${pad(s.i)}</dd>` + (s.diff ? `<dt>난이도</dt><dd><span class="diff">${s.diff}</span></dd>` : '') +
+      s.place.map(p => `<dt>${p[0]}</dt><dd>${p[1]}</dd>`).join('') +
+      `<dt>프레임</dt><dd>${s.start} → ${s.start + s.nf - 1} (${s.nf})</dd><dt>goal</dt><dd>${s.goal != null ? 'frame ' + s.goal : '–'}</dd>`;
+    const img = $('goalImg'); img.hidden = s.goal == null; if (s.goal != null) img.src = `goal/${S.bench}/${s.i}.png`;
+  }
+
+  // ---------- navigation
+  function setMetric(k) { S.metric = k; store.set('metric', k); metricSel.value = k; if (S.sort === 'spread') fillSamples(); paintTiles(); paintPer(); paintAgg(); }
+  function go(i) {
+    S.cur = i; $('sampleSel').value = i;
+    NF = D.samples[i].nf; $('scrub').max = NF - 1;
+    try { history.replaceState(null, '', '#' + hashOf(S.bench, i)); } catch (e) {}
+    loadVideos(); paintTiles(); paintInfo(); paintPer();
+  }
+  async function loadBench(id, cur) {
+    $('status').textContent = '지표 불러오는 중…';
+    let d;
+    try { const r = await fetch('api/data?bench=' + encodeURIComponent(id)); if (!r.ok) throw new Error(r.status); d = await r.json(); }
+    catch (e) { $('status').textContent = `이 벤치마크 지표를 불러오지 못했어요 (${e.message}).`; return; }
+    D = d; S.bench = id; store.set('bench', id); benchSel.value = id;
+    CK = D.ckpts; NC = CK.length; M = D.metrics; MK = Object.fromEntries(M.map(m => [m.key, m])); fillMetrics();
+    $('ttl').textContent = `${D.run} · ${D.label}`; document.title = `${D.label} 뷰어`;
+    let h = []; try { h = JSON.parse(store.get('hidden_' + id, '[]')); } catch (e) {}
+    hidden = new Set(h.filter(c => CK.includes(c))); if (!vis().length) hidden.clear();
+    const dg = store.get('diff_' + id, 'all'); S.diff = D.groups.includes(dg) ? dg : 'all';
+    S.cur = cur != null && cur < D.samples.length ? cur : 0;
+    if (S.diff !== 'all' && D.samples[S.cur].diff !== S.diff) S.diff = 'all';
+    S.sel = vis()[0];
+    buildDiff(); buildChips(); fillSamples(); buildGrid(); paintAgg(); go(S.cur);
+  }
+
+  metricSel.addEventListener('change', e => setMetric(e.target.value));
+  benchSel.addEventListener('change', e => loadBench(e.target.value, 0));
+  $('sortSel').addEventListener('change', e => { S.sort = e.target.value; store.set('sort', S.sort); fillSamples(); go(+$('sampleSel').value); });
+  $('sampleSel').addEventListener('change', e => go(+e.target.value));
+  $('prev').addEventListener('click', () => step(-1)); $('next').addEventListener('click', () => step(1));
+  document.addEventListener('keydown', e => {
+    if (!D || e.target.matches('select, input')) return;
+    if (e.key === 'ArrowRight') { step(1); e.preventDefault(); } else if (e.key === 'ArrowLeft') { step(-1); e.preventDefault(); }
+    else if (e.key === ' ') { togglePlay(); e.preventDefault(); }
+    else if (e.key === ',') stepFrame(-1); else if (e.key === '.') stepFrame(1);
+  });
+  function fromHash() {
+    const m = /^#([a-z0-9-]+)-s(\d+)$/.exec(location.hash); if (!m) return null;
+    const b = m[1].replace(/-/g, '_'); return BENCHES.some(x => x.id === b && x.ckpts.length) ? { b, i: +m[2] } : null;
+  }
+  window.addEventListener('hashchange', () => { const h = fromHash(); if (!h) return;
+    if (h.b !== S.bench) loadBench(h.b, h.i); else if (h.i !== S.cur && h.i < D.samples.length) go(h.i); });
+
+  const h0 = fromHash();
+  if (!BENCHES.some(b => b.id === S.bench && b.ckpts.length)) S.bench = (BENCHES.find(b => b.ckpts.length) || BENCHES[0]).id;
+  await loadBench(h0 ? h0.b : S.bench, h0 ? h0.i : 0);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

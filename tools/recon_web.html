@@ -1,0 +1,256 @@
+<title>Town01 Sunset Recon</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Layout: one full-bleed WebGL canvas (the scene is the page) with a slim instrument strip floating over it. */
+:root {
+  color-scheme: dark;
+  --bg: #0e1013;          /* viewer void, slight blue bias like the reference render */
+  --panel: rgba(20, 23, 28, 0.86);
+  --band: #14171c;        /* toolbar band */
+  --line: #2a2f37;
+  --fg: #e6e8eb;
+  --muted: #8b929c;
+  --accent: #f2b84b;      /* sodium street-lamp amber: active toggle, goal marker */
+  --gt: #4ea1ff;          /* GT trajectory */
+  --pred: #ff5a5a;        /* model trajectory */
+  --da3: #6fdc8c;         /* DA3 trajectory */
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); overflow: hidden; display: flex; flex-direction: column; }
+#view { position: relative; flex: 1 1 auto; min-height: 0; }
+#view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+/* toolbar band above the scene: nothing floats over the point clouds */
+.hud {
+  flex: none; position: relative; z-index: 2; background: var(--band); border-bottom: 1px solid var(--line);
+  padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; justify-content: space-between;
+  max-height: 45vh; overflow-y: auto;
+}
+.card { min-width: 0; max-width: 100%; }
+.controls { display: flex !important; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
+.title { display: grid; gap: 4px; }
+.title h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .01em; text-wrap: balance; }
+.title h1 .star { color: var(--accent); }
+.meta { font-family: var(--mono); font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.controls { display: grid; gap: 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); min-width: 44px; }
+button.seg {
+  font: 500 12px var(--mono); color: var(--fg); background: transparent; border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 9px; cursor: pointer;
+}
+button.seg[aria-pressed="true"] { background: var(--accent); color: #17130a; border-color: var(--accent); }
+button.seg:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type=range] { width: 110px; accent-color: var(--accent); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+.note { flex-basis: 100%; font-size: 11.5px; line-height: 1.45; color: var(--muted); max-width: 90ch; }
+@media (max-width: 640px) { .note { display: none; } input[type=range] { width: 90px; } }
+.ptag { position: absolute; z-index: 1; pointer-events: none; font: 600 12px var(--mono); letter-spacing: .06em;
+  color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
+.ptag small { font-weight: 400; color: var(--muted); letter-spacing: 0; margin-left: 6px; }
+.divider { position: absolute; z-index: 1; background: var(--line); pointer-events: none; }
+</style>
+
+<div class="hud">
+  <div class="card title">
+    <h1><span class="star">★</span> <span id="seq">sample</span></h1>
+    <div class="meta" id="meta"></div>
+  </div>
+  <div class="card controls">
+    <div class="row" role="group" aria-label="Layout">
+      <span class="lbl">Layout</span>
+      <button class="seg" id="l-one" aria-pressed="false">One</button>
+      <button class="seg" id="l-three" aria-pressed="true">Three</button>
+    </div>
+    <div class="row" role="group" aria-label="Point cloud" id="cloudrow">
+      <span class="lbl">Cloud</span>
+      <button class="seg" id="b-PRED" aria-pressed="true">PRED</button>
+      <button class="seg" id="b-DA3" aria-pressed="false">DA3</button>
+      <button class="seg" id="b-GT" aria-pressed="false">GT</button>
+    </div>
+    <div class="row">
+      <span class="lbl">View</span>
+      <button class="seg" id="v-orbit">Oblique</button>
+      <button class="seg" id="v-ego">Ego</button>
+      <button class="seg" id="v-bev">Top</button>
+      <button class="seg" id="b-traj" aria-pressed="true">Paths</button>
+    </div>
+    <div class="row">
+      <label class="lbl" for="clip">Depth</label>
+      <input type="range" id="clip" min="2" max="40" step="0.5" value="15">
+      <span class="meta" id="clipv"></span>
+    </div>
+    <div class="row">
+      <label class="lbl" for="psize">Size</label>
+      <input type="range" id="psize" min="0.02" max="0.25" step="0.01" value="0.09">
+      <span class="meta" id="npts"></span>
+    </div>
+    <div class="legend">
+      <span style="--c: var(--gt)">GT path</span>
+      <span style="--c: var(--pred)">model path (raymap)</span>
+      <span style="--c: var(--da3)">DA3 path</span>
+      <span style="--c: var(--accent)">goal</span>
+    </div>
+  </div>
+  <div class="note" id="note"></div>
+</div>
+
+<div id="view">
+  <div class="ptag" id="t-PRED" hidden>PRED<small>model depth + raymap cams</small></div>
+  <div class="ptag" id="t-DA3" hidden>DA3<small>on generated video</small></div>
+  <div class="ptag" id="t-GT" hidden>GT<small>CARLA</small></div>
+  <div class="divider" id="d1" hidden></div>
+  <div class="divider" id="d2" hidden></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const DATA = /*__DATA__*/null;
+const NOTES = {
+  PRED: "Model's own geometry: predicted depth (one affine to GT disparity per sample, the best case) unprojected at the raymap-predicted poses, colored by the generated video.",
+  DA3: "DA3 run on the generated video: depth and cameras read from the generated pixels alone, Sim3-fitted to GT, colored by the generated video.",
+  GT: "CARLA ground truth: rendered depth at GT poses, colored by the GT frames. Reference for what the scene should look like."
+};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const view = document.getElementById("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(css("--bg"));
+const camera = new THREE.PerspectiveCamera(55, 1, 0.05, 2000);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+
+function decode(b64, Type) {
+  const bin = atob(b64), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return new Type(u8.buffer);
+}
+const clouds = {}; let ground = 0;
+for (const [k, c] of Object.entries(DATA.clouds)) {
+  const q = decode(c.pos, Int16Array), col = decode(c.col, Uint8Array);
+  const pos = new Float32Array(q.length);
+  for (let i = 0; i < q.length; i++) pos[i] = q[i] / 100;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3, true));
+  const mat = new THREE.PointsMaterial({ size: 0.09, vertexColors: true, sizeAttenuation: true });
+  const pts = new THREE.Points(g, mat); pts.visible = false; scene.add(pts);
+  clouds[k] = { pts, n: c.n, dep: decode(c.dep, Uint8Array), shown: c.n };   // dep: camera depth / 0.2 m, ascending
+  if (k === "GT") { const ys = []; for (let i = 1; i < pos.length; i += 3 * 7) ys.push(pos[i]); ys.sort((a, b) => a - b); ground = ys[Math.floor(ys.length * 0.05)] || 0; }
+}
+const grid = new THREE.GridHelper(80, 40, 0x3a404a, 0x23272e);
+grid.position.y = ground - 0.02; grid.material.transparent = true; grid.material.opacity = 0.55; scene.add(grid);
+
+const paths = new THREE.Group(); scene.add(paths);
+const trajColor = { GT: css("--gt"), PRED: css("--pred"), DA3: css("--da3") };
+for (const [k, T] of Object.entries(DATA.traj)) {
+  const g = new THREE.BufferGeometry().setFromPoints(T.map(p => new THREE.Vector3(p[0], p[1], p[2])));
+  paths.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: trajColor[k] })));
+  const s = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshBasicMaterial({ color: trajColor[k] }));
+  s.position.set(...T[0]); paths.add(s);
+}
+const goal = new THREE.Mesh(new THREE.OctahedronGeometry(0.3), new THREE.MeshBasicMaterial({ color: css("--accent") }));
+goal.position.set(...DATA.goal_pt); paths.add(goal);
+
+const gt0 = new THREE.Vector3(...DATA.traj.GT[0]), gtN = new THREE.Vector3(...DATA.traj.GT[DATA.traj.GT.length - 1]);
+const mid = gt0.clone().lerp(gtN, 0.5);
+const fwd = gtN.clone().sub(gt0).setY(0); if (fwd.length() < 1e-3) fwd.set(1, 0, 0); fwd.normalize();
+function setView(kind) {
+  if (kind === "bev") { camera.position.set(mid.x + 0.01, mid.y + 32, mid.z); controls.target.copy(mid); }
+  else if (kind === "ego") { const p = gt0.clone().addScaledVector(fwd, -3).add(new THREE.Vector3(0, 1.6, 0)); camera.position.copy(p); controls.target.copy(gt0.clone().addScaledVector(fwd, 8)); }
+  else { const side = new THREE.Vector3(-fwd.z, 0, fwd.x); camera.position.copy(mid.clone().addScaledVector(fwd, -14).addScaledVector(side, 10).add(new THREE.Vector3(0, 13, 0))); controls.target.copy(mid.clone().addScaledVector(fwd, 4)); }
+  controls.update();
+}
+let active = "PRED", layout = "three";
+const ORDER = ["PRED", "DA3", "GT"].filter(k => clouds[k]);
+function count() {
+  document.getElementById("npts").textContent = layout === "three"
+    ? ORDER.map(k => k + " " + Math.round(clouds[k].shown / 1000) + "k").join(" · ")
+    : clouds[active].shown.toLocaleString() + " pts";
+}
+function rects() {                                   // CSS-pixel panels, top-left origin
+  const W = view.clientWidth, H = view.clientHeight, n = ORDER.length, wide = W >= 720;
+  return ORDER.map((k, i) => wide ? { k, x: Math.round(i * W / n), y: 0, w: Math.round(W / n), h: H }
+                                  : { k, x: 0, y: Math.round(i * H / n), w: W, h: Math.round(H / n) });
+}
+function placeTags() {
+  const three = layout === "three", R = rects(), wide = view.clientWidth >= 720;
+  for (const r of R) {
+    const t = document.getElementById("t-" + r.k); t.hidden = !three;
+    t.style.left = (r.x + 10) + "px";
+    t.style.top = (r.y + 10) + "px";
+  }
+  ["d1", "d2"].forEach((id, i) => {
+    const d = document.getElementById(id), r = R[i + 1]; d.hidden = !three || !r;
+    if (!r) return;
+    Object.assign(d.style, wide ? { left: r.x + "px", top: "0px", width: "1px", height: "100%" }
+                                : { left: "0px", top: r.y + "px", width: "100%", height: "1px" });
+  });
+  document.getElementById("cloudrow").hidden = three;
+  document.getElementById("note").hidden = three;
+  document.getElementById("l-one").setAttribute("aria-pressed", String(!three));
+  document.getElementById("l-three").setAttribute("aria-pressed", String(three));
+}
+function setLayout(l) { layout = l; placeTags(); count(); if (l === "one") show(active); }
+document.getElementById("l-one").addEventListener("click", () => setLayout("one"));
+document.getElementById("l-three").addEventListener("click", () => setLayout("three"));
+function show(k) {
+  active = k;
+  for (const [n, c] of Object.entries(clouds)) { c.pts.visible = n === k; document.getElementById("b-" + n).setAttribute("aria-pressed", String(n === k)); }
+  count(); document.getElementById("note").textContent = NOTES[k];
+}
+const clipIn = document.getElementById("clip");
+function setClip(m) {
+  const lim = Math.round(m / 0.2);
+  for (const c of Object.values(clouds)) {           // points are sorted by depth: clip = how many to draw
+    let lo = 0, hi = c.dep.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (c.dep[mid] <= lim) lo = mid + 1; else hi = mid; }
+    c.shown = lo; c.pts.geometry.setDrawRange(0, lo);
+  }
+  document.getElementById("clipv").textContent = "≤ " + (+m).toFixed(1) + " m"; count();
+}
+clipIn.max = DATA.max_depth; clipIn.value = DATA.clip;
+clipIn.addEventListener("input", e => setClip(+e.target.value));
+for (const k of Object.keys(clouds)) document.getElementById("b-" + k).addEventListener("click", () => show(k));
+document.getElementById("v-orbit").addEventListener("click", () => setView("orbit"));
+document.getElementById("v-ego").addEventListener("click", () => setView("ego"));
+document.getElementById("v-bev").addEventListener("click", () => setView("bev"));
+const bt = document.getElementById("b-traj");
+bt.addEventListener("click", () => { paths.visible = !paths.visible; bt.setAttribute("aria-pressed", String(paths.visible)); });
+document.getElementById("psize").addEventListener("input", e => { for (const c of Object.values(clouds)) c.pts.material.size = +e.target.value; });
+
+document.getElementById("seq").textContent = DATA.seq.replaceAll("/", "__");
+document.getElementById("meta").textContent =
+  `${DATA.label} · sample ${DATA.sample} · frames ${DATA.start}–${DATA.start + 76} · goal ${DATA.goal} · 20 key frames · voxel ${Math.round(DATA.voxel * 100)} cm · depth clip adjustable to ${DATA.max_depth} m`;
+
+function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); placeTags(); }
+window.addEventListener("resize", resize);
+resize(); setView("orbit"); show("PRED"); setClip(DATA.clip); setLayout("three");
+(function loop() {
+  controls.update();
+  const W = view.clientWidth, H = view.clientHeight;
+  if (layout === "three") {
+    renderer.setScissorTest(true);
+    for (const r of rects()) {                       // one shared camera: every panel shows the same view
+      for (const [n, c] of Object.entries(clouds)) c.pts.visible = n === r.k;
+      const yb = H - r.y - r.h;                     // WebGL viewport origin is bottom-left
+      renderer.setViewport(r.x, yb, r.w, r.h); renderer.setScissor(r.x, yb, r.w, r.h);
+      camera.aspect = r.w / r.h; camera.updateProjectionMatrix();
+      renderer.render(scene, camera);
+    }
+    renderer.setScissorTest(false);
+  } else {
+    for (const [n, c] of Object.entries(clouds)) c.pts.visible = n === active;
+    renderer.setViewport(0, 0, W, H); camera.aspect = W / H; camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>

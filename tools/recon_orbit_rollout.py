@@ -146,8 +146,11 @@ def build(roll_dir, sample, max_depth, stride, want_rgb, mask_pred=False):
     trav = sum(float(np.linalg.norm(cg[FR[i + 1][2]][:3, 3] - cg[FR[i][2]][:3, 3]))
                for i in range(len(FR) - 1))
     cam_tracks = [np.stack([psrc[f][:3, 3] for _, _, f in FR]) for _, _, psrc in combos]
+    # per-frame point counts (same order as the concatenated clouds) -> lets recon_grow_rollout.py slice by frame
+    counts = [len(range(0, int(masks[f].sum()), stride)) for _, _, f in FR]
     info = dict(seq_dir=sd, start=st, F=F, overlap=OV, K=K, T_lat=T_lat, W=W_,
-                cam_tracks=cam_tracks,
+                cam_tracks=cam_tracks, frames=[f for _, _, f in FR], counts=counts,
+                cam_rots=[np.stack([psrc[f][:3, :3] for _, _, f in FR]) for _, _, psrc in combos],
                 n_frames=len(FR), affine=(float(s), float(t)), travel_m=trav,
                 has_pred_pose=cp is not None)
     return [c[0] for c in combos], clouds, ctr, RGB, info
